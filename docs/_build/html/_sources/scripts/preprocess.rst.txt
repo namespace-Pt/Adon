@@ -1,6 +1,0 @@
-Preprocess
-==========
-
-.. automodule:: scripts.preprocess
-   :members:
-   :private-members:

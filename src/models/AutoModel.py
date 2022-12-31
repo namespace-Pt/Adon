@@ -17,7 +17,6 @@ from .UniRetriever import UniRetriever
 from .VQ import DistillVQ
 
 MODEL_MAP = {
-    "ar2": AR2,
     "bm25": BM25,
     "coil": COIL,
     "colbert": ColBERT,
@@ -27,8 +26,6 @@ MODEL_MAP = {
     "dpr": DPR,
     "dsi": DSI,
     "ivf": IVF,
-    "seq2seq": Seq2SeqRanker,
-    "seq2seqranker": Seq2SeqRanker,
     "sparta": SPARTA,
     "spladev2": SPLADEv2,
     "topivf": TopIVF,

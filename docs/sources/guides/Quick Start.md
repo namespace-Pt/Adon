@@ -10,19 +10,19 @@ The very first thing you should do is to download the MSMARCO passage data. You 
 
 The file is actually a `.tar.gz` file, and you should untar it wherever you like. If you save all the uncompressed files in `/home/user/Data`, you should modify the `data/config/base/_default.yaml` to tell the programme where to find the data by changing `data_root` to `/home/user/Data`.
 
-Adin defaults to use the efficient `numpy.memmap` to save the tokenzied corpus, which can reduce memory usage and speed up data loading. To use this feature, run
+Adon defaults to use the efficient `numpy.memmap` to save the tokenzied corpus, which can reduce memory usage and speed up data loAdong. To use this feature, run
 ```bash
 # all the following commands are executed under the src folder
 cd src
 
 python -m scripts.preprocess ++max_text_length=256 ++max_query_length=64
 ```
-where `max_text_length` and `max_query_length` define the maximum length of the passages/queries respectively.
+where `max_text_length` and `max_query_length` define the maximum length of the passages/queries respectively. The default value of `max_text_length` and `max_query_length` is defined in `data/config/base/MSMARCO-passage.yaml`.
 
 So far, we have finished all the preperation steps. Lets dive in.
 
 ## Reproducing BM25
-Adin integrates the efficient Lucene searcher from Anserini, which requires JDK11 to work. You should first install jdk11 by
+Adon integrates the efficient Lucene searcher from Anserini, which requires JDK11 to work. You should first install jdk11 by
 ```bash
 cd /the/path/you/like
 wget https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_linux-x64_bin.tar.gz
@@ -44,7 +44,7 @@ The indexing and evaluating should finish within 10 minutes. The metrics will be
 
 
 ## Reproducing RetroMAE
-RetroMAE is a powerful pre-trained language model specifically designed for dense retrieval. For pre-trained models like BERT and RetroMAE, Adin will permanently download them in a given folder and directly load from the folder afterwards. You should specify the place you want to store by specifying `plm_root` in `data/config/base/_default.yaml`.
+RetroMAE is a powerful pre-trained language model specifically designed for dense retrieval. For pre-trained models like BERT and RetroMAE, Adon will permanently download them in a given folder and directly load from the folder afterwards. You should specify the place you want to store by specifying `plm_root` in `data/config/base/_default.yaml`.
 
 Then, just run
 ```bash
@@ -85,7 +85,7 @@ python run.py DPR
 # use multiple gpus
 torchrun --nproc_per_node=4 run.py DPR
 ```
-Check `data/config/dpr.yaml` to see the default arguments for training DPR. Adin will evaluate the model's performance on the dev query set every epoch, and save the best checkpoint at `data/cache/MSMARCO-passage/ckpts/DPR/best`.
+Check `data/config/dpr.yaml` to see the default arguments for training DPR. Adon will evaluate the model's performance on the dev query set every epoch, and save the best checkpoint at `data/cache/MSMARCO-passage/ckpts/DPR/best`.
 
 ## Train a UniCOIL
 

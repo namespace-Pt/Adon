@@ -48,9 +48,11 @@ RetroMAE is a powerful pre-trained language model specifically designed for dens
 
 Then, just run
 ```bash
-python run.py RetroMAE ++save_encode ++world_size=2
+torchrun --nproc_per_node=2 run.py RetroMAE ++save_encode
 ```
-where `save_encode` means saving the encoded vectors at `data/cache/encode/RetroMAE/` and `world_size=2` means use two gpus for parallel inferencing.
+- `python` is replaced with `torchrun` because we start the process in distributed mode
+- `--nproc_per_node` denotes the number of GPUs to be used
+- `save_encode` means saving the encoded vectors at `data/cache/MSMARCO-passage/encode/RetroMAE/`
 
 The result should be (or similar to):
 |MRR@10|Recall@10|Recall@100|Recall@1000|
@@ -77,8 +79,11 @@ python -m scripts.negative ++hard_neg_type=BM25
 This command automatically loads the retrieval result generated above (at `data/cache/MSMARCO-passage/retrieve/BM25/train/retrieval_result.pkl`), filters out the ground-truth passages and generates the dictionary mapping a query to its BM25 hard negatives, stored at `data/cache/MSMARCO-passage/dataset/train/negatives_BM25.pkl`.
 
 Finally, launch the training for DPR model:
-```
+```bash
 python run.py DPR
+
+# use multiple gpus
+torchrun --nproc_per_node=4 run.py DPR
 ```
 Check `data/config/dpr.yaml` to see the default arguments for training DPR. Adin will evaluate the model's performance on the dev query set every epoch, and save the best checkpoint at `data/cache/MSMARCO-passage/ckpts/DPR/best`.
 
@@ -88,6 +93,9 @@ UniCOIL is a sparse model relying on the contextualized weights of overlapping t
 
 ```
 python run.py UniCOIL
+
+# use multiple gpus
+torchrun --nproc_per_node=4 run.py DPR
 ```
 Again, check `data/config/unicoil.yaml` to see the default arguments of UniCOIL.
 

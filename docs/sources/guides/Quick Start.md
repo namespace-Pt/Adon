@@ -61,7 +61,7 @@ The result should be (or similar to):
 
 
 ## Train a DPR
-The central task of a retriever is to discriminate relevant document from the irrlevant ones in response to a query. To train a dense retriever, one should expose the model to some *hard* negatives [1](https://arxiv.org/abs/2104.08051), where the basic hard negative is the documents that were ranked high in BM25.
+The central task of a retriever is to discriminate relevant document from the irrlevant ones in response to a query. To train a dense retriever, one should expose the model to some [hard negatives](https://arxiv.org/abs/2104.08051), where the basic hard negative is the documents that were ranked high in BM25.
 
 To collect BM25 hard negatives, first generate the BM25 top ranked result on the `train` set by
 ```bash

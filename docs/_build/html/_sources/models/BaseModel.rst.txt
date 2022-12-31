@@ -1,0 +1,5 @@
+BaseModel
+=========
+
+.. automodule:: models.BaseModel
+   :members:

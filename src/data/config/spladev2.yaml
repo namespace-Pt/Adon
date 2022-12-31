@@ -1,0 +1,39 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: MSMARCO-passage
+  - model: sparse
+  - index: inv
+  - train: triple-raw
+  - eval: retrieve
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  plm: distilbert
+
+model:
+  model_type: spladev2
+
+  text_lambda: 1e-2
+  query_lambda: 3e-2
+  text_decode_k: 256
+  query_decode_k: 64
+
+index:
+  index_type: invvec
+
+train:
+  batch_size: 64
+  learning_rate: 2e-5
+  scheduler: linear
+
+  eval_step: 10000
+  hold_step: 50000
+  warmup: 6000
+  total_step: 150000
+  lambda_warmup_step: 50000
+
+eval:
+  eval_posting_length: True
+  eval_flops: True

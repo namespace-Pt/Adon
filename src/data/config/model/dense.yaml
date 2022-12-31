@@ -1,0 +1,12 @@
+defaults:
+  - _default
+
+# metric used for dense retrieval
+dense_metric: ip
+
+# the dense embedding can be used for clusterring
+cluster_type: none
+# the number of clusters
+ncluster: 10000
+# the number of leaf node in hierarchical clusterring
+leaf_node_num: 10

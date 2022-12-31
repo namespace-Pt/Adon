@@ -1,0 +1,5 @@
+defaults:
+  - _default
+  - _self_
+
+index_type: trie

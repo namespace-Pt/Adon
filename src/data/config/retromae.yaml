@@ -1,0 +1,34 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: MSMARCO-passage
+  - model: dense
+  - index: faiss
+  - train: neg
+  - eval: retrieve
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  mode: eval
+
+  plm: retromae
+  expand_title: True
+  text_length: 140
+
+model:
+  model_type: dpr
+  load_encode: true
+  untie_encoder: false
+
+index:
+  index_type: Flat
+
+train:
+  batch_size: 16
+  hard_neg_num: 15
+  learning_rate: 2e-5
+  scheduler: linear
+
+eval:
+  eval_posting_length: true

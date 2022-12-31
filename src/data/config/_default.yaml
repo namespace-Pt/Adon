@@ -1,0 +1,11 @@
+# disable the hydra outputs
+defaults:
+  - _self_
+  # override package to be imported from the folder
+  - override /hydra/hydra_logging@_group_: none
+  - override /hydra/job_logging@_group_: none
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .

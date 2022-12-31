@@ -1,0 +1,9 @@
+defaults:
+  - _default
+  - _self_
+
+index_type: flat
+
+nprobe: 1
+by_residual: true
+hnswef: 1000

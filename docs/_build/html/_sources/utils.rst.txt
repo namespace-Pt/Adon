@@ -1,0 +1,27 @@
+Utils
+==========
+
+manager
+-------
+
+.. automodule:: utils.manager
+   :members:
+   :private-members:
+
+index
+-----
+
+.. automodule:: utils.index
+   :members:
+   :special-members: __init__
+   :private-members:
+
+util
+----
+
+.. automodule:: utils.util
+   :members:
+   :private-members:
+   :special-members: __init__
+
+

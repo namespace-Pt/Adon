@@ -1,0 +1,38 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: MSMARCO-passage
+  - model: sparse
+  - index: inv
+  - eval: retrieve
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  mode: eval
+
+model:
+  model_type: ivf
+
+  query_gate_k: 20
+
+  vq_src: RetroMAE
+  vq_index: IVF10000,PQ64x8
+
+  embedding_src: RetroMAE
+  return_embedding: true
+
+  save_encode: true
+
+  load_ckpt: none
+
+index:
+  index_type: invhit
+
+eval:
+  hits: 0
+  eval_posting_length: True
+
+  verifier_type: pq
+  verifier_src: DistillVQ_d-RetroMAE
+  verifier_index: OPQ96,PQ96x8

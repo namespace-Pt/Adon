@@ -1,0 +1,14 @@
+defaults:
+  - _default
+
+dataset: LECARD
+plm: bert-xingshi
+text_length: 512
+query_length: 256
+
+max_text_length: 512
+max_query_length: 512
+
+# ajjbqk
+text_col: [1]
+text_col_sep: "sep"

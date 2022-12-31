@@ -1,0 +1,5 @@
+index_type: none
+
+# load the existing index
+load_index: False
+save_index: False

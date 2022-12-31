@@ -1,0 +1,54 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: MSMARCO-passage
+  - model: sparse
+  - index: inv
+  - train: neg
+  - eval: retrieve
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+model:
+  model_type: topivf
+
+  return_embedding: true
+  embedding_src: RetroMAE
+
+  vq_src: RetroMAE
+  vq_index: IVF10000,PQ64x8
+
+  # how many topic postings to scan
+  query_gate_k: 20
+  # freeze pq centroids, only update IVF centroids
+  freeze_pq: false
+  # how to quantize ivf
+  quantize_ivf: fixed
+  # train the query encoder?
+  train_encoder: false
+
+  save_encode: true
+
+index:
+  index_type: invhit
+
+train:
+  # scale the ivf loss to pq loss?
+  scale_ivf_loss: true
+
+  distill_src: RetroMAE
+  objective: kd
+
+  epoch: 50
+  batch_size: 128
+
+  learning_rate: 1e-5
+  learning_rate_pq: 1e-4
+  learning_rate_ivf: 1e-4
+  scheduler: linear
+
+eval:
+  eval_posting_length: True
+  verifier_type: pq
+  verifier_src: DistillVQ_d-RetroMAE
+  verifier_index: OPQ96,PQ96x8

@@ -1,0 +1,17 @@
+defaults:
+  - _default
+  - _self_
+
+index_type: bm25
+
+load_collection: False
+quantize_bits: 8
+language: eng
+word_reduce: max
+
+# k1 and b used in bm25
+k1: 0.82
+b: 0.68
+
+index_thread: 32
+pretokenize: false

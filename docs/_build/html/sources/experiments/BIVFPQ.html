@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BIVFPQ &mdash; Uni-Retriever  documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="LECARD" href="LeCaRD.html" />
+    <link rel="prev" title="Experiments" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../../index.html" class="icon icon-home"> Uni-Retriever
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../index.html">Home</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../data.html">Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../utils/index.html">Utils</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../models/index.html">Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../scripts/index.html">Scripts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../guides/index.html">Guides</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Experiments</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">BIVFPQ</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#msmarco">MSMARCO</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#module-performance">Module Performance</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#nq-open">NQ-open</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#id1">Token Module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="LeCaRD.html">LECARD</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Model-Based%20IR.html">Model-Based IR</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Uni-Retriever</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Experiments</a></li>
+      <li class="breadcrumb-item active">BIVFPQ</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/sources/experiments/BIVFPQ.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="bivfpq">
+<h1>BIVFPQ<a class="headerlink" href="#bivfpq" title="Permalink to this heading"></a></h1>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python run.py BIVFPQ
+
+<span class="c1"># run BM25 by invhit index</span>
+python run.py BM25 <span class="nv">index</span><span class="o">=</span>inv ++pretokenize ++index_type<span class="o">=</span>invhit ++text_gate_k<span class="o">=</span><span class="m">2</span> ++verifier_type<span class="o">=</span>flat ++verifier_src<span class="o">=</span>ARG ++device<span class="o">=</span><span class="m">0</span> ++save_encode ++eval_posting_length
+<span class="c1"># run UniRetriever to test IVF+BM25 performance</span>
+python run.py UniRetriever ++x_index_type<span class="o">=</span>invhit ++x_text_gate_k<span class="o">=</span><span class="m">2</span> ++x_pretokenize ++y_nprobe<span class="o">=</span><span class="m">50</span> ++y_hits<span class="o">=</span><span class="m">10000</span> ++y_device<span class="o">=</span>cpu
+
+<span class="c1"># train TopIVF</span>
+python run.py TopIVF
+python run.py TopIVF <span class="nv">base</span><span class="o">=</span>NQ-open ++distill_src<span class="o">=</span>AR2 ++vq_src<span class="o">=</span>AR2 ++embedding_src<span class="o">=</span>AR2 ++verifier_src<span class="o">=</span>DistillVQ_d-AR2
+
+<span class="c1"># run TokIVF</span>
+python run.py TokIVF ++mode<span class="o">=</span><span class="nb">eval</span>
+python run.py TokIVF <span class="nv">base</span><span class="o">=</span>NQ-open ++mode<span class="o">=</span><span class="nb">eval</span> ++verifier_src<span class="o">=</span>DistillVQ_d-AR2 ++world_size<span class="o">=</span><span class="m">4</span> ++posting_prune<span class="o">=</span><span class="m">0</span>.999
+
+<span class="c1"># run IVF on NQ-open</span>
+python run.py IVF_DistillVQ <span class="nv">base</span><span class="o">=</span>NQ-open ++vq_src<span class="o">=</span>DistillVQ_d-AR2 ++embedding_src<span class="o">=</span>AR2 ++verifier_src<span class="o">=</span>DistillVQ_d-AR2 ++save_model ++save_encode
+</pre></div>
+</div>
+<section id="msmarco">
+<h2>MSMARCO<a class="headerlink" href="#msmarco" title="Permalink to this heading"></a></h2>
+<section id="module-performance">
+<h3>Module Performance<a class="headerlink" href="#module-performance" title="Permalink to this heading"></a></h3>
+<section id="token-module">
+<h4>Token Module<a class="headerlink" href="#token-module" title="Permalink to this heading"></a></h4>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head text-center"><p>Train</p></th>
+<th class="head text-center"><p>text gate k</p></th>
+<th class="head text-center"><p>posting prune</p></th>
+<th class="head text-center"><p>Post Verification</p></th>
+<th class="head text-center"><p>MRR&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;100</p></th>
+<th class="head text-center"><p>Recall&#64;1000</p></th>
+<th class="head text-center"><p>FLOPs</p></th>
+<th class="head text-center"><p>Posting Length</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-center"><p>Contra</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.3396</p></td>
+<td class="text-center"><p>0.6016</p></td>
+<td class="text-center"><p>0.8443</p></td>
+<td class="text-center"><p>0.9403</p></td>
+<td class="text-center"><p>1.03</p></td>
+<td class="text-center"><p></p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.3524</p></td>
+<td class="text-center"><p>0.6112</p></td>
+<td class="text-center"><p>0.85</p></td>
+<td class="text-center"><p>0.9441</p></td>
+<td class="text-center"><p>0.66</p></td>
+<td class="text-center"><p>4048703</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>5</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.1945</p></td>
+<td class="text-center"><p>0.3553</p></td>
+<td class="text-center"><p>0.5737</p></td>
+<td class="text-center"><p>0.7514</p></td>
+<td class="text-center"><p>0.0</p></td>
+<td class="text-center"><p>46212</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>5</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>0.3924</p></td>
+<td class="text-center"><p>0.6693</p></td>
+<td class="text-center"><p>0.8791</p></td>
+<td class="text-center"><p>0.9257</p></td>
+<td class="text-center"><p>0.0</p></td>
+<td class="text-center"><p>46212</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="ivf-module">
+<h4>IVF Module<a class="headerlink" href="#ivf-module" title="Permalink to this heading"></a></h4>
+<p>nlist = 10000</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head text-center"><p>Embedding</p></th>
+<th class="head text-center"><p>Training</p></th>
+<th class="head text-center"><p>Post Verification</p></th>
+<th class="head text-center"><p>nlist</p></th>
+<th class="head text-center"><p>nprobe</p></th>
+<th class="head text-center"><p>MRR&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;100</p></th>
+<th class="head text-center"><p>Recall&#64;1000</p></th>
+<th class="head text-center"><p>Posting Length</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-center"><p>AR2</p></td>
+<td class="text-center"><p>Faiss</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>10000</p></td>
+<td class="text-center"><p>20</p></td>
+<td class="text-center"><p>0.3559</p></td>
+<td class="text-center"><p>0.597</p></td>
+<td class="text-center"><p>0.7985</p></td>
+<td class="text-center"><p>0.8512</p></td>
+<td class="text-center"><p>21570</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>AR2</p></td>
+<td class="text-center"><p>DymIVF; only centroids</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>10000</p></td>
+<td class="text-center"><p>20</p></td>
+<td class="text-center"><p>0.3593</p></td>
+<td class="text-center"><p>0.6035</p></td>
+<td class="text-center"><p>0.8017</p></td>
+<td class="text-center"><p>0.8517</p></td>
+<td class="text-center"><p>30710</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>Faiss</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>10000</p></td>
+<td class="text-center"><p>20</p></td>
+<td class="text-center"><p>0.303</p></td>
+<td class="text-center"><p>0.5057</p></td>
+<td class="text-center"><p>0.6793</p></td>
+<td class="text-center"><p>0.7244</p></td>
+<td class="text-center"><p>30162</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>Faiss</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>100000</p></td>
+<td class="text-center"><p>200</p></td>
+<td class="text-center"><p>0.3497</p></td>
+<td class="text-center"><p>0.5985</p></td>
+<td class="text-center"><p>0.8078</p></td>
+<td class="text-center"><p>0.8583</p></td>
+<td class="text-center"><p>34671</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>Faiss</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>1000</p></td>
+<td class="text-center"><p>2</p></td>
+<td class="text-center"><p>0.2177</p></td>
+<td class="text-center"><p>0.3581</p></td>
+<td class="text-center"><p>0.4698</p></td>
+<td class="text-center"><p>0.5012</p></td>
+<td class="text-center"><p>29180</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>TopIVF</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>20</p></td>
+<td class="text-center"><p>0.3548</p></td>
+<td class="text-center"><p>0.5971</p></td>
+<td class="text-center"><p>0.7912</p></td>
+<td class="text-center"><p>0.842</p></td>
+<td class="text-center"><p>19900</p></td>
+<td class="text-center"><p></p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>TopIVF; freeze PQ</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>20</p></td>
+<td class="text-center"><p>0.3406</p></td>
+<td class="text-center"><p>0.5728</p></td>
+<td class="text-center"><p>0.7586</p></td>
+<td class="text-center"><p>0.8068</p></td>
+<td class="text-center"><p>19985</p></td>
+<td class="text-center"><p></p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>TopIVF; neg=7</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>20</p></td>
+<td class="text-center"><p>0.3496</p></td>
+<td class="text-center"><p>0.588</p></td>
+<td class="text-center"><p>0.7784</p></td>
+<td class="text-center"><p>0.8274</p></td>
+<td class="text-center"><p>19377</p></td>
+<td class="text-center"><p></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="pq-module">
+<h4>PQ Module<a class="headerlink" href="#pq-module" title="Permalink to this heading"></a></h4>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head text-center"><p>Embedding</p></th>
+<th class="head text-center"><p>Training</p></th>
+<th class="head text-center"><p>M</p></th>
+<th class="head text-center"><p>k</p></th>
+<th class="head text-center"><p>MRR&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;100</p></th>
+<th class="head text-center"><p>Recall&#64;1000</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>Faiss; OPQ</p></td>
+<td class="text-center"><p>96</p></td>
+<td class="text-center"><p>8</p></td>
+<td class="text-center"><p>0.3829</p></td>
+<td class="text-center"><p>0.6705</p></td>
+<td class="text-center"><p>0.912</p></td>
+<td class="text-center"><p>0.9833</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>Distill; OPQ; hard_neg=31</p></td>
+<td class="text-center"><p>96</p></td>
+<td class="text-center"><p>8</p></td>
+<td class="text-center"><p>0.3991</p></td>
+<td class="text-center"><p>0.6852</p></td>
+<td class="text-center"><p>0.9192</p></td>
+<td class="text-center"><p>0.9849</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>Distill; OPQ; hard_neg=31</p></td>
+<td class="text-center"><p>128</p></td>
+<td class="text-center"><p>8</p></td>
+<td class="text-center"><p>0.4023</p></td>
+<td class="text-center"><p>0.6921</p></td>
+<td class="text-center"><p>0.9222</p></td>
+<td class="text-center"><p>0.9859</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>RetroMAE</p></td>
+<td class="text-center"><p>Contra; OPQ; hard_neg=31</p></td>
+<td class="text-center"><p>96</p></td>
+<td class="text-center"><p>8</p></td>
+<td class="text-center"><p>0.3847</p></td>
+<td class="text-center"><p>0.6726</p></td>
+<td class="text-center"><p>0.9115</p></td>
+<td class="text-center"><p>0.9835</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+</section>
+<section id="nq-open">
+<h2>NQ-open<a class="headerlink" href="#nq-open" title="Permalink to this heading"></a></h2>
+<section id="id1">
+<h3>Token Module<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head text-center"><p>Train</p></th>
+<th class="head text-center"><p>text gate k</p></th>
+<th class="head text-center"><p>posting prune</p></th>
+<th class="head text-center"><p>Post Verification</p></th>
+<th class="head text-center"><p>Recall&#64;5</p></th>
+<th class="head text-center"><p>Recall&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;20</p></th>
+<th class="head text-center"><p>Recall&#64;100</p></th>
+<th class="head text-center"><p>FLOPs</p></th>
+<th class="head text-center"><p>Posting Length</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-center"><p>Contra</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.6374</p></td>
+<td class="text-center"><p>0.7169</p></td>
+<td class="text-center"><p>0.7734</p></td>
+<td class="text-center"><p>0.8596</p></td>
+<td class="text-center"><p>1.31</p></td>
+<td class="text-center"><p></p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.6867</p></td>
+<td class="text-center"><p>0.7579</p></td>
+<td class="text-center"><p>0.8075</p></td>
+<td class="text-center"><p>0.877</p></td>
+<td class="text-center"><p>1.17</p></td>
+<td class="text-center"><p>15493704</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>0.999</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.6753</p></td>
+<td class="text-center"><p>0.7488</p></td>
+<td class="text-center"><p>0.7994</p></td>
+<td class="text-center"><p>0.8753</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>7272238</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>0.99</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.6593</p></td>
+<td class="text-center"><p>0.7366</p></td>
+<td class="text-center"><p>0.785</p></td>
+<td class="text-center"><p>0.8612</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>2541314</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>0.95</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.6496</p></td>
+<td class="text-center"><p>0.7213</p></td>
+<td class="text-center"><p>0.7745</p></td>
+<td class="text-center"><p>0.8537</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>981106</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>0.9</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.6368</p></td>
+<td class="text-center"><p>0.7094</p></td>
+<td class="text-center"><p>0.7665</p></td>
+<td class="text-center"><p>0.8454</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>578886</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>0.75</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.6235</p></td>
+<td class="text-center"><p>0.6939</p></td>
+<td class="text-center"><p>0.7521</p></td>
+<td class="text-center"><p>0.8393</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>228329</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>0.5</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.5964</p></td>
+<td class="text-center"><p>0.6742</p></td>
+<td class="text-center"><p>0.7269</p></td>
+<td class="text-center"><p>0.8213</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>91747</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>4</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.3972</p></td>
+<td class="text-center"><p>0.4831</p></td>
+<td class="text-center"><p>0.5612</p></td>
+<td class="text-center"><p>0.7028</p></td>
+<td class="text-center"><p>0.21</p></td>
+<td class="text-center"><p>4392645</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>4</p></td>
+<td class="text-center"><p>0.999</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.4044</p></td>
+<td class="text-center"><p>0.4798</p></td>
+<td class="text-center"><p>0.5496</p></td>
+<td class="text-center"><p>0.6842</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>69721</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>5</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.4382</p></td>
+<td class="text-center"><p>0.5263</p></td>
+<td class="text-center"><p>0.6006</p></td>
+<td class="text-center"><p>0.7299</p></td>
+<td class="text-center"><p>0.23</p></td>
+<td class="text-center"><p>4755584</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>5</p></td>
+<td class="text-center"><p>0.999</p></td>
+<td class="text-center"><p>:x:</p></td>
+<td class="text-center"><p>0.4327</p></td>
+<td class="text-center"><p>0.5122</p></td>
+<td class="text-center"><p>0.5812</p></td>
+<td class="text-center"><p>0.7064</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>86381</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>Contra then Distill</p></td>
+<td class="text-center"><p>5</p></td>
+<td class="text-center"><p>0.999</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>0.7587</p></td>
+<td class="text-center"><p>0.8086</p></td>
+<td class="text-center"><p>0.8393</p></td>
+<td class="text-center"><p>0.8806</p></td>
+<td class="text-center"><p>–</p></td>
+<td class="text-center"><p>114157</p></td>
+</tr>
+</tbody>
+</table>
+<section id="id2">
+<h4>IVF Module<a class="headerlink" href="#id2" title="Permalink to this heading"></a></h4>
+<p>nlist = 10000</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head text-center"><p>Embedding</p></th>
+<th class="head text-center"><p>Training</p></th>
+<th class="head text-center"><p>Post Verification</p></th>
+<th class="head text-center"><p>nlist</p></th>
+<th class="head text-center"><p>nprobe</p></th>
+<th class="head text-center"><p>Recall&#64;5</p></th>
+<th class="head text-center"><p>Recall&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;20</p></th>
+<th class="head text-center"><p>Recall&#64;100</p></th>
+<th class="head text-center"><p>Posting Length</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-center"><p>AR2</p></td>
+<td class="text-center"><p>Faiss</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>10000</p></td>
+<td class="text-center"><p>20</p></td>
+<td class="text-center"><p>0.6047</p></td>
+<td class="text-center"><p>0.651</p></td>
+<td class="text-center"><p>0.6861</p></td>
+<td class="text-center"><p>0.7551</p></td>
+<td class="text-center"><p>62125</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>AR2</p></td>
+<td class="text-center"><p>Faiss</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>10000</p></td>
+<td class="text-center"><p>100</p></td>
+<td class="text-center"><p>0.6958</p></td>
+<td class="text-center"><p>0.7493</p></td>
+<td class="text-center"><p>0.7817</p></td>
+<td class="text-center"><p>0.836</p></td>
+<td class="text-center"><p>311276</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p>AR2</p></td>
+<td class="text-center"><p>TopIVF</p></td>
+<td class="text-center"><p>:heavy_check_mark:</p></td>
+<td class="text-center"><p>10000</p></td>
+<td class="text-center"><p>20</p></td>
+<td class="text-center"><p>0.7382</p></td>
+<td class="text-center"><p>0.7837</p></td>
+<td class="text-center"><p>0.8141</p></td>
+<td class="text-center"><p>0.8596</p></td>
+<td class="text-center"><p>35846</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id3">
+<h4>PQ Module<a class="headerlink" href="#id3" title="Permalink to this heading"></a></h4>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head text-center"><p>Embedding</p></th>
+<th class="head text-center"><p>Training</p></th>
+<th class="head text-center"><p>M</p></th>
+<th class="head text-center"><p>k</p></th>
+<th class="head text-center"><p>Recall&#64;5</p></th>
+<th class="head text-center"><p>Recall&#64;10</p></th>
+<th class="head text-center"><p>Recall&#64;20</p></th>
+<th class="head text-center"><p>Recall&#64;100</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-center"><p>AR2</p></td>
+<td class="text-center"><p>Faiss; OPQ</p></td>
+<td class="text-center"><p>96</p></td>
+<td class="text-center"><p>8</p></td>
+<td class="text-center"><p>0.7698</p></td>
+<td class="text-center"><p>0.8285</p></td>
+<td class="text-center"><p>0.8632</p></td>
+<td class="text-center"><p>0.9055</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>AR2</p></td>
+<td class="text-center"><p>Distill; OPQ; hard_neg=31</p></td>
+<td class="text-center"><p>96</p></td>
+<td class="text-center"><p>8</p></td>
+<td class="text-center"><p>0.7812</p></td>
+<td class="text-center"><p>0.8335</p></td>
+<td class="text-center"><p>0.8632</p></td>
+<td class="text-center"><p>0.908</p></td>
+</tr>
+</tbody>
+</table>
+<!-- ### UniCOIL
+|Ablation|Learning Rate|Batch Size|Hard Negative|All Gather|MRR@10|Recall@10|Recall@100|Recall@1000|
+|:-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|Default|3e-6|64|bm25*7+inbatch|:heavy_check_mark:|0.3221|0.5631|0.8128|0.9241|
+|w. smaller lr|5e-6|64|bm25*7+inbatch|:heavy_check_mark:|0.3178|0.5621|0.8101|0.9256|
+|w. larger lr|3e-5|64|bm25*7+inbatch|:heavy_check_mark:|0.3188|0.561|0.8045|0.9234|
+|w. larger bs|3e-6|128|bm25*7+inbatch|:heavy_check_mark:|0.319|0.5606|0.8122|0.9236|
+|w. scheduler|3e-6+linear_0.1|64|bm25*7+inbatch|:heavy_check_mark:|0.3196|0.5607|0.8105|0.924|
+|w. more negative|3e-6|64|bm25*15+inbatch|:heavy_check_mark:|0.3233|0.5675|0.8107|0.9229|
+|w. self hard negative|3e-6|64|self*7+inbatch|:heavy_check_mark:|0.331|0.5749|0.8132|0.9292|
+|w. distillation|3e-6|64|bm25*7+inbatch|:heavy_check_mark:|0.3297|0.5717|0.8182|0.9266|
+|w. distillation; w. self hard negative|3e-6|64|self*7+inbatch|:heavy_check_mark:|0.3384|0.5841|0.8249|0.9326|
+|w. distillation; w. self hard negative; w. more negative|3e-6|64|self*15+inbatch|:heavy_check_mark:|0.3434|0.5947|0.8273|0.931|
+|w. distillation; w. larger lr|3e-5|64|bm25*7+inbatch|:heavy_check_mark:|0.3258|0.5691|0.8137|0.9252|
+|w. distillation; w. larger lr; w. scheduler|3e-5+linear_0.1|64|bm25*7+inbatch|:heavy_check_mark:|0.3252|0.566|0.8112|0.9257|
+|w.o. in-batch negative|3e-6|64|bm25*7|:heavy_check_mark:|0.3157|0.557|0.8043|0.9193|
+|w.o. all gather|3e-6|64|bm25*7+inbatch|:x:|0.3162|0.5587|0.8089|0.9225| -->
+</section>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Experiments" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="LeCaRD.html" class="btn btn-neutral float-right" title="LECARD" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, namespace-Pt.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

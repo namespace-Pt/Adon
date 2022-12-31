@@ -1,0 +1,42 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: MSMARCO-passage
+  - model: _default
+  - eval: retrieve
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  mode: eval
+
+eval:
+  verifier_type: flat
+  verifier_src: AR2
+  # verifier_index: OPQ96,PQ96x8
+
+model:
+  model_type: uniretriever
+  load_index: true
+
+  x_model: BM25
+  x_index_type: bm25
+  x_hits: 1000
+
+  y_model: AR2
+  y_index_type: IVF10000,PQ64x8
+  y_hits: 1000
+
+  x_load_encode: true
+  y_load_encode: true
+  x_load_index: true
+  y_load_index: true
+
+  x_load_ckpt: best
+  y_load_ckpt: best
+
+  x_verifier_type: none
+  y_verifier_type: none
+
+  x_eval_posting_length: true
+  y_eval_posting_length: true

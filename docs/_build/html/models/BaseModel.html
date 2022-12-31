@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BaseModel &mdash; Uni-Retriever  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Guides" href="../guides/index.html" />
+    <link rel="prev" title="Models" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> Uni-Retriever
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../index.html">Home</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../utils.html">Utils</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../scripts.html">Scripts</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Models</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">BaseModel</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../guides/index.html">Guides</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../experiments/index.html">Experiments</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Uni-Retriever</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Models</a></li>
+      <li class="breadcrumb-item active">BaseModel</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/models/BaseModel.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-models.BaseModel">
+<span id="basemodel"></span><h1>BaseModel<a class="headerlink" href="#module-models.BaseModel" title="Permalink to this headline"></a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">models.BaseModel.</span></span><span class="sig-name descname"><span class="pre">BaseModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel" title="Permalink to this definition"></a></dt>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.save_to_mmp">
+<span class="sig-name descname"><span class="pre">save_to_mmp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obj</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.save_to_mmp" title="Permalink to this definition"></a></dt>
+<dd><p>shortcut for saving the embedding into a np.memmap file</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.post_verify">
+<span class="sig-name descname"><span class="pre">post_verify</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">retrieval_result</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loader_text</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loader_query</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.post_verify" title="Permalink to this definition"></a></dt>
+<dd><p>post verify the retrieval_result or a list of retrieval result by the verifier_src: verifier_type</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>retrieval_result</strong> – a list of retrieval_result or just a single dict</p></li>
+<li><p><strong>loader_text</strong> – </p></li>
+<li><p><strong>loader_query</strong> – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.dev">
+<span class="sig-name descname"><span class="pre">dev</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.dev" title="Permalink to this definition"></a></dt>
+<dd><p>evaluate on dev set</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.log_result">
+<span class="sig-name descname"><span class="pre">log_result</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.log_result" title="Permalink to this definition"></a></dt>
+<dd><p>wrap logging</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.load">
+<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.load" title="Permalink to this definition"></a></dt>
+<dd><p>load the model with a given config</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.from_pretrained">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ckpt_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.from_pretrained" title="Permalink to this definition"></a></dt>
+<dd><p>load a pretrained model from a given path</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ckpt_path</strong> – the path to the model checkpoint</p></li>
+<li><p><strong>device</strong> – the device to load the model, default: cpu</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">models.BaseModel.</span></span><span class="sig-name descname"><span class="pre">BaseSparseModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel" title="Permalink to this definition"></a></dt>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.retrieve">
+<span class="sig-name descname"><span class="pre">retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.retrieve" title="Permalink to this definition"></a></dt>
+<dd><p>retrieve by index</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>encode_query</strong> – if true, compute query embedding before retrieving</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.encode_text">
+<span class="sig-name descname"><span class="pre">encode_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.encode_text" title="Permalink to this definition"></a></dt>
+<dd><p>encode each token into a weight
+:param load_all_cache: bool, set to true to load the entire cache file</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>text_embeddings: N, L, D
+text_token_ids: N, L</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p><a class="reference internal" href="../utils.html#utils.util.BaseOutput" title="utils.util.BaseOutput">BaseOutput</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.encode_query">
+<span class="sig-name descname"><span class="pre">encode_query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_query</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_cache</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.encode_query" title="Permalink to this definition"></a></dt>
+<dd><p>encode each query into a weight or a vector.
+Note that all the cached embedding are loaded, regardless of the rank
+:returns:     embeddings: np.ndarray of shape [N, L, D]</p>
+<blockquote>
+<div><p>token_ids: np.ndarray of shape [N, L]</p>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="../utils.html#utils.util.BaseOutput" title="utils.util.BaseOutput">BaseOutput</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.compute_flops">
+<span class="sig-name descname"><span class="pre">compute_flops</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_token_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_token_weights</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_token_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_token_weights</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.compute_flops" title="Permalink to this definition"></a></dt>
+<dd><p>compute flops as stated in SPLADE; Note that this function uses the cached embedding to compute flops</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">models.BaseModel.</span></span><span class="sig-name descname"><span class="pre">BaseDenseModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel" title="Permalink to this definition"></a></dt>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.retrieve">
+<span class="sig-name descname"><span class="pre">retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.retrieve" title="Permalink to this definition"></a></dt>
+<dd><p>retrieve by index</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>encode_query</strong> – if true, compute query embedding before retrieving</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.encode_text">
+<span class="sig-name descname"><span class="pre">encode_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_cache</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.encode_text" title="Permalink to this definition"></a></dt>
+<dd><p>encode each text into a vector
+:returns:     text_embeddings: N, D
+:rtype: BaseOutput</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.encode_query">
+<span class="sig-name descname"><span class="pre">encode_query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_query</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_cache</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.encode_query" title="Permalink to this definition"></a></dt>
+<dd><p>encode each query into a vector</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>torch.Tensor of shape [N, D], residing on self.config.device</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>query_embeddings</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">models.BaseModel.</span></span><span class="sig-name descname"><span class="pre">BaseGenerativeModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel" title="Permalink to this definition"></a></dt>
+<dd><p>the base class for generative models e.g. DSI, WebUltron</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.trie_index">
+<span class="sig-name descname"><span class="pre">trie_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.trie_index" title="Permalink to this definition"></a></dt>
+<dd><p>creates a trie (prefix tree) index, where leaf nodes are docuements, and intermidiate nodes are codes</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.encode_text">
+<span class="sig-name descname"><span class="pre">encode_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.encode_text" title="Permalink to this definition"></a></dt>
+<dd><p>generate text codes</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Models" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../guides/index.html" class="btn btn-neutral float-right" title="Guides" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, namespace-Pt.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,30 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: NQ
+  - model: ranker
+  - index: _none
+  - train: neg
+  - eval: rerank
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  plm: t5
+
+model:
+  model_type: seq2seq
+  # how to generate the score of each token position
+  score_type: discrim
+  # force all token score's order?
+  ranking_token: last
+  # in beam ranking, which token score to use
+  beam_ranking: none
+  # in retrieve mode, limit the corpus to the candidates' subtree
+  retrieve_candidates: false
+
+train:
+  batch_size: 4
+  learning_rate: 3e-5
+  hard_neg_num: 7
+

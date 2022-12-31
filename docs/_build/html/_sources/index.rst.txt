@@ -1,0 +1,50 @@
+Welcome to Uni-Retriever's documentation!
+=========================================
+
+.. note::
+
+   This project is under active development.
+
+
+Uni-Retriever is a unified framework for Information Retrieval (IR) Research. It enjoys the merits of the existing open source libraries (e.g. `faiss <https://github.com/facebookresearch/faiss>`_, `Anserini <https://github.com/castorini/anserini>`_) and develops a unified workflow to implement various neural ranking models (Sparse, Dense and the newly proposed Generative). It is highlighted for the following properties:
+
+1. **Ready-to-use.** Uni-Retriever efficiently implements the entire IR pipeline: including the data loading, the model training and the model evaluation. You can quickly reproduce the result of any :doc:`listed models <sources/models/index>` right after downloading the necessary data.
+2. **Elastic.** The components of Uni-Retriever is carefully designed to be highly extendable and independent with one another. You can focus on developing a specific part (e.g. encoding model) without inspecting details about the others (e.g. implementation of ANN indexes). You can also develop your own model within the Uni-Retriever's framework by only adding a configuration file and a model's implementation.
+
+Before you start, make sure you installed the dependencies. You can manually install them,
+
+.. code-block:: console
+   
+   export CUDA=11.1
+   conda create -n uni python=3.9.12
+   conda install pytorch==1.12.1 cudatoolkit=${CUDA} -c conda-forge -c pytorch
+   conda install faiss-gpu==1.7.2 -c conda-forge
+   pip install torch_scatter -f https://data.pyg.org/whl/torch-1.12.0+${CUDA}.html
+   pip install transformers==4.21.3 hydra-core==1.2.0 notebook ipywidgets
+
+Or you can install the conda environment by one line:
+
+.. code-block:: console
+
+   conda env create -f environment.yml
+
+.. note::
+
+   Make sure the cudatoolkit version matches your machine!
+
+
+Contents
+--------
+..
+   include all the markdown file in the experiments folder with the experiments as top-title
+
+.. toctree::
+   :maxdepth: 2
+
+   Home <self>
+   data
+   sources/utils/index
+   sources/models/index
+   sources/scripts/index
+   sources/guides/index
+   sources/experiments/index

@@ -1,0 +1,6 @@
+defaults:
+  - _default
+  - _self_
+
+loader_train: nmt
+epoch: 50

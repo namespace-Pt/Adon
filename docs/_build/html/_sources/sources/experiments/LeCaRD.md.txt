@@ -1,0 +1,12 @@
+# LECARD
+
+```
+python -m scripts.preprocess --dataset LECARD --max_query_length 512 --plm bert-xingshi
+
+python -m main.dpr --dataset LECARD --hard_neg_type lecard --batch_size 16 --query_length 256 --text_length 512 --plm bert-xingshi --save_encode 0
+python -m main.crossenc --dataset LECARD --loader_train pair --loader_eval rerank --query_length 256 --text_length 257 --plm bert-xingshi --candidate_type rerank --eval_metric map,mrr,ndcg,precision --eval_metric_cutoff 1,5,10 --batch_size 8 --accumulate_step 4
+```
+
+|Method|MRR@10|Recall@10|nDCG@10|MAP|
+|:-:|:-:|:-:|:-:|:-:|
+|DPR|0.4091|0.|

@@ -1,0 +1,25 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: MSMARCO-passage
+  - model: ranker
+  - train: neg-raw
+  - eval: rerank
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  plm: bert
+
+model:
+  model_type: crossenc
+  return_pair: true
+
+train:
+  batch_size: 4
+  learning_rate: 3e-5
+
+  hard_neg_num: 7
+
+eval:
+  loader_rerank: raw

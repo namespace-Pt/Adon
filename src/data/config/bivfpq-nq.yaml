@@ -1,0 +1,43 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: NQ-open
+  - model: _default
+  - eval: retrieve
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  mode: eval
+
+eval:
+  verifier_type: pq
+  verifier_src: DistillVQ_d-AR2
+  verifier_index: OPQ96,PQ96x8
+
+
+model:
+  model_type: uniretriever
+
+  return_embedding: true
+  embedding_src: AR2
+
+  x_model: TokIVF
+  x_index_type: invhit
+  x_hits: 0
+  x_load_encode: true
+  x_text_gate_k: 5
+  x_load_ckpt: best
+  x_posting_prune: 0.999
+
+  y_model: TopIVF
+  y_index_type: invhit
+  y_hits: 0
+  y_load_encode: false
+  y_query_gate_k: 20
+  y_load_ckpt: best
+
+  x_eval_flops: false
+  y_eval_flops: false
+  x_eval_posting_length: true
+  y_eval_posting_length: true

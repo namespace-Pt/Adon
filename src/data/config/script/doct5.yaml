@@ -1,0 +1,22 @@
+# @package _global_
+# very essential to put the package directive so that the following config parameters are situated at the root layer
+
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  # add group package so the default list can be overriden from cli by name
+  - /base@_group_: NQ
+  - /eval@_group_: _default
+  - _self_
+
+base:
+  # default to evaluation mode
+  mode: script
+
+batch_size_eval: 50
+# how many queries to generate for each document
+query_per_doc: 10
+# load previously stored memmap file?
+load_encode: false
+
+tokenize_thread: 32

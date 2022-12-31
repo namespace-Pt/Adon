@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Preprocess &mdash; Uni-Retriever  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Guides" href="../guides/index.html" />
+    <link rel="prev" title="Scripts" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> Uni-Retriever
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../index.html">Home</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../utils/index.html">Utils</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../models/index.html">Models</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Scripts</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Preprocess</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../guides/index.html">Guides</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../experiments/index.html">Experiments</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Uni-Retriever</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Scripts</a></li>
+      <li class="breadcrumb-item active">Preprocess</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/scripts/preprocess.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-scripts.preprocess">
+<span id="preprocess"></span><h1>Preprocess<a class="headerlink" href="#module-scripts.preprocess" title="Permalink to this headline"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="scripts.preprocess.init_query_and_qrel">
+<span class="sig-prename descclassname"><span class="pre">scripts.preprocess.</span></span><span class="sig-name descname"><span class="pre">init_query_and_qrel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qrel_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_length</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preprocess_threads</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#scripts.preprocess.init_query_and_qrel" title="Permalink to this definition"></a></dt>
+<dd><p>tokenize query file and transfer passage/document/query id in qrel file to its index in the saved token-ids matrix</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query_path</strong> – query file path</p></li>
+<li><p><strong>qrel_path</strong> – qrel file path</p></li>
+<li><p><strong>cache_dir</strong> – </p></li>
+<li><p><strong>max_length</strong> – </p></li>
+<li><p><strong>remove_absent_query</strong> – if True, queries that didn’t appear in the qrels file will be removed from the input query file</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scripts.preprocess.init_text">
+<span class="sig-prename descclassname"><span class="pre">scripts.preprocess.</span></span><span class="sig-name descname"><span class="pre">init_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">text_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_length</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preprocess_threads</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#scripts.preprocess.init_text" title="Permalink to this definition"></a></dt>
+<dd><p>tokenize the passage/document text in multiple threads</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>text_path</strong> – query/passage/document file path</p></li>
+<li><p><strong>cache_dir</strong> – save the output token ids etc.</p></li>
+<li><p><strong>max_length</strong> – maximum token length of the text</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>map the id to the index in the saved token-id matrix</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>id2index</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scripts.preprocess._tokenize_text">
+<span class="sig-prename descclassname"><span class="pre">scripts.preprocess.</span></span><span class="sig-name descname"><span class="pre">_tokenize_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">all_line_count</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_length</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#scripts.preprocess._tokenize_text" title="Permalink to this definition"></a></dt>
+<dd><p>tokenize the input text, do padding and truncation, then save the token ids, token_lengths, text ids</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input_path</strong> – input text file path</p></li>
+<li><p><strong>output_dir</strong> – directory of output numpy arrays</p></li>
+<li><p><strong>start_idx</strong> – the begining index to read</p></li>
+<li><p><strong>end_idx</strong> – the ending index</p></li>
+<li><p><strong>tokenizer</strong> – transformer tokenizer</p></li>
+<li><p><strong>max_length</strong> – max length of tokens</p></li>
+<li><p><strong>text_type</strong> – corpus class</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Scripts" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../guides/index.html" class="btn btn-neutral float-right" title="Guides" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, namespace-Pt.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BaseModel &mdash; Uni-Retriever  documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Scripts" href="../scripts/index.html" />
+    <link rel="prev" title="Models" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../../index.html" class="icon icon-home"> Uni-Retriever
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../index.html">Home</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../data.html">Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../utils/index.html">Utils</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Models</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">BaseModel</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id1">BaseModel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#basesparsemodel">BaseSparseModel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#basedensemodel">BaseDenseModel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#basegenerativemodel">BaseGenerativeModel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../scripts/index.html">Scripts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../guides/index.html">Guides</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../experiments/index.html">Experiments</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Uni-Retriever</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Models</a></li>
+      <li class="breadcrumb-item active">BaseModel</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/sources/models/BaseModel.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="basemodel">
+<h1>BaseModel<a class="headerlink" href="#basemodel" title="Permalink to this heading"></a></h1>
+<section id="id1">
+<h2>BaseModel<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">models.BaseModel.</span></span><span class="sig-name descname"><span class="pre">BaseModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel" title="Permalink to this definition"></a></dt>
+<dd><p>Base class for all models.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../utils/util.html#utils.util.Config" title="utils.util.Config"><span class="pre">Config</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.__init__" title="Permalink to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> – the configuration object intialized by <a class="reference internal" href="../utils/manager.html#utils.manager.Manager._post_init_config_from_hydra" title="utils.manager.Manager._post_init_config_from_hydra"><code class="xref py py-func docutils literal notranslate"><span class="pre">utils.manager.Manager._post_init_config_from_hydra()</span></code></a></p></li>
+<li><p><strong>name</strong> – the name of the model</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.metrics">
+<span class="sig-name descname"><span class="pre">metrics</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.metrics" title="Permalink to this definition"></a></dt>
+<dd><p>the metric dictionary containing <code class="docutils literal notranslate"><span class="pre">metric_type:</span> <span class="pre">metric_value</span></code> pairs</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.config">
+<span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.config" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.name">
+<span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.name" title="Permalink to this definition"></a></dt>
+<dd><p>the name of the model</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.index_dir">
+<span class="sig-name descname"><span class="pre">index_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.index_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save index e.g. <a class="reference internal" href="../utils/my_index.html#utils.index.FaissIndex" title="utils.index.FaissIndex"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.index.FaissIndex</span></code></a> and <a class="reference internal" href="../utils/my_index.html#utils.index.InvertedVectorIndex" title="utils.index.InvertedVectorIndex"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.index.InvertedVectorIndex</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.collection_dir">
+<span class="sig-name descname"><span class="pre">collection_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.collection_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save json collections returned by e.g. <a class="reference internal" href="../utils/my_index.html#utils.index.AnseriniBM25Index.fit" title="utils.index.AnseriniBM25Index.fit"><code class="xref py py-func docutils literal notranslate"><span class="pre">utils.index.AnseriniBM25Index.fit()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.encode_dir">
+<span class="sig-name descname"><span class="pre">encode_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.encode_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save text encoding memmap file returned by <a class="reference internal" href="#models.BaseModel.BaseSparseModel.encode_text" title="models.BaseModel.BaseSparseModel.encode_text"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseSparseModel.encode_text()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.query_dir">
+<span class="sig-name descname"><span class="pre">query_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.query_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save query encoding memmap file returned by <a class="reference internal" href="#models.BaseModel.BaseSparseModel.encode_query" title="models.BaseModel.BaseSparseModel.encode_query"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseSparseModel.encode_query()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.retrieval_result_path">
+<span class="sig-name descname"><span class="pre">retrieval_result_path</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.retrieval_result_path" title="Permalink to this definition"></a></dt>
+<dd><p>the path of the final retrieval result file returned by <a class="reference internal" href="#models.BaseModel.BaseModel.retrieve" title="models.BaseModel.BaseModel.retrieve"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseModel.retrieve()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._rank">
+<span class="sig-name descname"><span class="pre">_rank</span></span><a class="headerlink" href="#models.BaseModel.BaseModel._rank" title="Permalink to this definition"></a></dt>
+<dd><p>the current process ID</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._world_size">
+<span class="sig-name descname"><span class="pre">_world_size</span></span><a class="headerlink" href="#models.BaseModel.BaseModel._world_size" title="Permalink to this definition"></a></dt>
+<dd><p>the number of all processes</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._distributed">
+<span class="sig-name descname"><span class="pre">_distributed</span></span><a class="headerlink" href="#models.BaseModel.BaseModel._distributed" title="Permalink to this definition"></a></dt>
+<dd><p>if distributed training/evaluating is enabled</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#models.BaseModel.BaseModel.logger" title="Permalink to this definition"></a></dt>
+<dd><p>the logger</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MasterLoger</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._l2_distance">
+<span class="sig-name descname"><span class="pre">_l2_distance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#models.BaseModel.BaseModel._l2_distance" title="Permalink to this definition"></a></dt>
+<dd><p>Compute l2 similarity.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x1</strong> – tensor of [B, D]</p></li>
+<li><p><strong>x2</strong> – tensor of [B, D]</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._cos_sim">
+<span class="sig-name descname"><span class="pre">_cos_sim</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.11)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.1</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#models.BaseModel.BaseModel._cos_sim" title="Permalink to this definition"></a></dt>
+<dd><p>Compute cosine similarity.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x1</strong> – tensor of [B, D]</p></li>
+<li><p><strong>x2</strong> – tensor of [B, D]</p></li>
+<li><p><strong>temperature</strong> – scale the similarity scores by dividing temperature</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._distillce">
+<span class="sig-name descname"><span class="pre">_distillce</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query_teacher_embedding</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos_seq_teacher_embedding</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neg_seq_teacher_embedding</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">student_scores</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#models.BaseModel.BaseModel._distillce" title="Permalink to this definition"></a></dt>
+<dd><p>Compute cross-entropy (KL) distillation loss.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query_teacher_embedding</strong> – tensor of [B, D]</p></li>
+<li><p><strong>pos_seq_teacher_embedding</strong> – tensor of [B, D]</p></li>
+<li><p><strong>neg_seq_teacher_embedding</strong> – tensor of [B, N, D]</p></li>
+<li><p><strong>student_scores</strong> – tensor of [B, B/1+N]</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>1-element tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._get_optimizer">
+<span class="sig-name descname"><span class="pre">_get_optimizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataloader_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.11)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><span class="pre">torch.optim.Optimizer</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#models.BaseModel.BaseModel._get_optimizer" title="Permalink to this definition"></a></dt>
+<dd><p>Create optimizer and scheduler for the training process; Subclass may override this function to create custom optimizers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dataloader_length</strong> – the training steps per epoch</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>optimizer
+scheduler</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._gather_objects">
+<span class="sig-name descname"><span class="pre">_gather_objects</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">local_object</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.11)"><span class="pre">object</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.11)"><span class="pre">object</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#models.BaseModel.BaseModel._gather_objects" title="Permalink to this definition"></a></dt>
+<dd><p>Gather common python objects across processes.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This function implicitly consumes GPU.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>local_object</strong> – python object to collect</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._gather_tensors">
+<span class="sig-name descname"><span class="pre">_gather_tensors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">local_tensor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#models.BaseModel.BaseModel._gather_tensors" title="Permalink to this definition"></a></dt>
+<dd><p>Gather tensors from all gpus on each process.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>local_tensor</strong> – the tensor that needs to be gathered</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>concatenation of local_tensor in each process</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._gather_retrieval_result">
+<span class="sig-name descname"><span class="pre">_gather_retrieval_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">retrieval_result</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Union" title="(in Python v3.11)"><span class="pre">Union</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.11)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.11)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hits</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.11)"><span class="pre">Optional</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retrieval_result_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.11)"><span class="pre">Optional</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Union" title="(in Python v3.11)"><span class="pre">Union</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.11)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.11)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#models.BaseModel.BaseModel._gather_retrieval_result" title="Permalink to this definition"></a></dt>
+<dd><ol class="arabic simple">
+<li><p>Gather <code class="docutils literal notranslate"><span class="pre">retrieval_result</span></code> across processes;</p></li>
+<li><p>Returning the reordered result cut off to top k;</p></li>
+<li><p>Create a lock;</p></li>
+<li><p>Save the result at <a class="reference internal" href="#models.BaseModel.BaseModel.retrieval_result_path" title="models.BaseModel.BaseModel.retrieval_result_path"><code class="xref py py-attr docutils literal notranslate"><span class="pre">models.BaseModel.BaseModel.retrieval_result_path</span></code></a>.</p></li>
+<li><p>Release the lock.</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>retrieval_result</strong> – each tuple is a document id-score pair</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>processed retrieval result</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel._synchronize">
+<span class="sig-name descname"><span class="pre">_synchronize</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel._synchronize" title="Permalink to this definition"></a></dt>
+<dd><p>Synchronize all processes in the distributed group by <code class="docutils literal notranslate"><span class="pre">torch.dist.barrier()</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.save_to_mmp">
+<span class="sig-name descname"><span class="pre">save_to_mmp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.11)"><span class="pre">tuple</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loader</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1000</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.save_to_mmp" title="Permalink to this definition"></a></dt>
+<dd><ol class="arabic simple">
+<li><p>Create a <code class="docutils literal notranslate"><span class="pre">np.memmap</span></code> file of <code class="docutils literal notranslate"><span class="pre">shape</span></code> with <code class="docutils literal notranslate"><span class="pre">dtype</span></code>;</p></li>
+<li><p>Create lock;</p></li>
+<li><p>Save the <code class="docutils literal notranslate"><span class="pre">obj</span></code> to the offset <a class="reference internal" href="../utils/util.html#utils.util.Sequential_Sampler.start" title="utils.util.Sequential_Sampler.start"><code class="xref py py-attr docutils literal notranslate"><span class="pre">utils.util.Sequential_Sampler.start</span></code></a>;</p></li>
+<li><p>Release lock.</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – the memmap file path</p></li>
+<li><p><strong>shape</strong> – the shape of the memmap file to be created</p></li>
+<li><p><strong>dtype</strong> – </p></li>
+<li><p><strong>loader</strong> – the dataloader for the data</p></li>
+<li><p><strong>obj</strong> – the array to be stored</p></li>
+<li><p><strong>batch_size</strong> – saving in batch</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.index">
+<span class="sig-name descname"><span class="pre">index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.index" title="Permalink to this definition"></a></dt>
+<dd><p>The index method. Subclass should override this function.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.retrieve">
+<span class="sig-name descname"><span class="pre">retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.retrieve" title="Permalink to this definition"></a></dt>
+<dd><p>The retrieve method. Subclass should override this function.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.rerank">
+<span class="sig-name descname"><span class="pre">rerank</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.rerank" title="Permalink to this definition"></a></dt>
+<dd><p>Rerank the candidates in <a class="reference internal" href="../utils/dataset.html#utils.dataset.PairDataset" title="utils.dataset.PairDataset"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.dataset.PairDataset</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.init_verifier">
+<span class="sig-name descname"><span class="pre">init_verifier</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_verifier</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.init_verifier" title="Permalink to this definition"></a></dt>
+<dd><p>Initialize post verifier defined in :pyobj:<code class="docutils literal notranslate"><span class="pre">utils.index.VERIFIER_MAP</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>loaders</strong> – </p></li>
+<li><p><strong>load_all_verifier</strong> – if <code class="docutils literal notranslate"><span class="pre">True</span></code>, load all the verifier embeddings/codes</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.dev">
+<span class="sig-name descname"><span class="pre">dev</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.11)"><span class="pre">Optional</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.dev" title="Permalink to this definition"></a></dt>
+<dd><ol class="arabic simple">
+<li><p>Evaluate the model on <code class="docutils literal notranslate"><span class="pre">config.eval_set</span></code>;</p></li>
+<li><p>Log the metrics;</p></li>
+<li><p>Save the checkpoint if necessary.</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>step</strong> – the name to use when saving the checkpoint if <code class="docutils literal notranslate"><span class="pre">config.save_at_eval==True</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.log_result">
+<span class="sig-name descname"><span class="pre">log_result</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.log_result" title="Permalink to this definition"></a></dt>
+<dd><p>Wrapper for logging metrics in evaluating.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.save">
+<span class="sig-name descname"><span class="pre">save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">checkpoint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.11)"><span class="pre">Optional</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.save" title="Permalink to this definition"></a></dt>
+<dd><p>Save the model at <code class="docutils literal notranslate"><span class="pre">checkpoint</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.load">
+<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.load" title="Permalink to this definition"></a></dt>
+<dd><p>Load the model with current config from <code class="docutils literal notranslate"><span class="pre">config.load_ckpt</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.from_pretrained">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ckpt_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Union" title="(in Python v3.11)"><span class="pre">Union</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.11)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'cpu'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.from_pretrained" title="Permalink to this definition"></a></dt>
+<dd><p>Load model and its config from <code class="docutils literal notranslate"><span class="pre">ckpt_path</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cls</strong> – the model class</p></li>
+<li><p><strong>ckpt_path</strong> – the path to the model checkpoint</p></li>
+<li><p><strong>device</strong> – the device to load the model</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>the loaded model</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.generate_code">
+<span class="sig-name descname"><span class="pre">generate_code</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.generate_code" title="Permalink to this definition"></a></dt>
+<dd><p>Generate text codes used in <a class="reference internal" href="../experiments/Model-Based%20IR.html"><span class="doc">Model-Based IR</span></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseModel.encode">
+<span class="sig-name descname"><span class="pre">encode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseModel.encode" title="Permalink to this definition"></a></dt>
+<dd><p>Shotcut for encoding both text and query.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="basesparsemodel">
+<h2>BaseSparseModel<a class="headerlink" href="#basesparsemodel" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">models.BaseModel.</span></span><span class="sig-name descname"><span class="pre">BaseSparseModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel" title="Permalink to this definition"></a></dt>
+<dd><p>Base class for all models that rely on token weights to rank documents.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../utils/util.html#utils.util.Config" title="utils.util.Config"><span class="pre">Config</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.__init__" title="Permalink to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> – the configuration object intialized by <a class="reference internal" href="../utils/manager.html#utils.manager.Manager._post_init_config_from_hydra" title="utils.manager.Manager._post_init_config_from_hydra"><code class="xref py py-func docutils literal notranslate"><span class="pre">utils.manager.Manager._post_init_config_from_hydra()</span></code></a></p></li>
+<li><p><strong>name</strong> – the name of the model</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.metrics">
+<span class="sig-name descname"><span class="pre">metrics</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.metrics" title="Permalink to this definition"></a></dt>
+<dd><p>the metric dictionary containing <code class="docutils literal notranslate"><span class="pre">metric_type:</span> <span class="pre">metric_value</span></code> pairs</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.config">
+<span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.config" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.name">
+<span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.name" title="Permalink to this definition"></a></dt>
+<dd><p>the name of the model</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.index_dir">
+<span class="sig-name descname"><span class="pre">index_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.index_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save index e.g. <a class="reference internal" href="../utils/my_index.html#utils.index.FaissIndex" title="utils.index.FaissIndex"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.index.FaissIndex</span></code></a> and <a class="reference internal" href="../utils/my_index.html#utils.index.InvertedVectorIndex" title="utils.index.InvertedVectorIndex"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.index.InvertedVectorIndex</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.collection_dir">
+<span class="sig-name descname"><span class="pre">collection_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.collection_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save json collections returned by e.g. <a class="reference internal" href="../utils/my_index.html#utils.index.AnseriniBM25Index.fit" title="utils.index.AnseriniBM25Index.fit"><code class="xref py py-func docutils literal notranslate"><span class="pre">utils.index.AnseriniBM25Index.fit()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.encode_dir">
+<span class="sig-name descname"><span class="pre">encode_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.encode_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save text encoding memmap file returned by <a class="reference internal" href="#models.BaseModel.BaseSparseModel.encode_text" title="models.BaseModel.BaseSparseModel.encode_text"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseSparseModel.encode_text()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.query_dir">
+<span class="sig-name descname"><span class="pre">query_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.query_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save query encoding memmap file returned by <a class="reference internal" href="#models.BaseModel.BaseSparseModel.encode_query" title="models.BaseModel.BaseSparseModel.encode_query"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseSparseModel.encode_query()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.retrieval_result_path">
+<span class="sig-name descname"><span class="pre">retrieval_result_path</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.retrieval_result_path" title="Permalink to this definition"></a></dt>
+<dd><p>the path of the final retrieval result file returned by <a class="reference internal" href="#models.BaseModel.BaseModel.retrieve" title="models.BaseModel.BaseModel.retrieve"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseModel.retrieve()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel._rank">
+<span class="sig-name descname"><span class="pre">_rank</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel._rank" title="Permalink to this definition"></a></dt>
+<dd><p>the current process ID</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel._world_size">
+<span class="sig-name descname"><span class="pre">_world_size</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel._world_size" title="Permalink to this definition"></a></dt>
+<dd><p>the number of all processes</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel._distributed">
+<span class="sig-name descname"><span class="pre">_distributed</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel._distributed" title="Permalink to this definition"></a></dt>
+<dd><p>if distributed training/evaluating is enabled</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.logger" title="Permalink to this definition"></a></dt>
+<dd><p>the logger</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MasterLoger</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel._compute_overlap">
+<span class="sig-name descname"><span class="pre">_compute_overlap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query_token_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq_token_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel._compute_overlap" title="Permalink to this definition"></a></dt>
+<dd><p>Compute overlapping mask between the query tokens and sequence tokens.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query_token_id</strong> – [B, LQ]</p></li>
+<li><p><strong>seq_token_id</strong> – [B, (N,) LS]</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>overlapping_mask of [B, (N,) LQ, LS]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel._compute_overlap_inbatch">
+<span class="sig-name descname"><span class="pre">_compute_overlap_inbatch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query_token_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos_seq_token_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel._compute_overlap_inbatch" title="Permalink to this definition"></a></dt>
+<dd><p>Compute overlapping mask between the query tokens and positive sequence tokens across batches.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query_token_id</strong> – [B, LQ]</p></li>
+<li><p><strong>pos_seq_token_id</strong> – [B, LS]</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>[B, LQ, B, LS]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>overlapping_mask</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel._gate_query">
+<span class="sig-name descname"><span class="pre">_gate_query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query_embeddings</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_token_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.11)"><span class="pre">Optional</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel._gate_query" title="Permalink to this definition"></a></dt>
+<dd><p>Gate the query token weights so that only the top <code class="docutils literal notranslate"><span class="pre">config.query_gate_k</span></code> tokens are valid. Moreover, change the gated token ids to -1.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>query_embeddings</strong> – [N, L, 1]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel._gate_text">
+<span class="sig-name descname"><span class="pre">_gate_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">text_embeddings</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.11)"><span class="pre">Optional</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel._gate_text" title="Permalink to this definition"></a></dt>
+<dd><p>Gate the text token weights so that only the top <code class="docutils literal notranslate"><span class="pre">config.query_gate_k</span></code> tokens are valid.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>query_embeddings</strong> – [N, L, 1]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.inverted_index">
+<span class="sig-name descname"><span class="pre">inverted_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.inverted_index" title="Permalink to this definition"></a></dt>
+<dd><p>Construct <a class="reference internal" href="../utils/my_index.html#utils.index.BaseInvertedIndex" title="utils.index.BaseInvertedIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">utils.index.BaseInvertedIndex</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.anserini_index">
+<span class="sig-name descname"><span class="pre">anserini_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.anserini_index" title="Permalink to this definition"></a></dt>
+<dd><p>Construct <a class="reference internal" href="../utils/my_index.html#utils.index.BaseAnseriniIndex" title="utils.index.BaseAnseriniIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">utils.index.BaseAnseriniIndex</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.index">
+<span class="sig-name descname"><span class="pre">index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.index" title="Permalink to this definition"></a></dt>
+<dd><p>Wrapper to construct a variety of sparse indexes. Subclass may override this function to create customized index.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.retrieve">
+<span class="sig-name descname"><span class="pre">retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Union" title="(in Python v3.11)"><span class="pre">Union</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.11)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.11)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.retrieve" title="Permalink to this definition"></a></dt>
+<dd><ol class="arabic simple">
+<li><p>Retrieve by the index;</p></li>
+<li><p>Compute auxillary metrics if necessary;</p></li>
+<li><p>Post verify if necessary.</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>retrieval result</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.encode_text">
+<span class="sig-name descname"><span class="pre">encode_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_encode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.encode_text" title="Permalink to this definition"></a></dt>
+<dd><p>Encode texts into token weights or token vecs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>load_all_encode</strong> – bool, set to true to load the entire cache file</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>text_embeddings: array of [N, L, D]
+text_token_ids: array of [N, L]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../utils/util.html#utils.util.BaseOutput" title="utils.util.BaseOutput">BaseOutput</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.encode_query">
+<span class="sig-name descname"><span class="pre">encode_query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_query</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_encode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.encode_query" title="Permalink to this definition"></a></dt>
+<dd><p>Encode each query into a weight or a vector.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>load_all_encode</strong> – if <code class="docutils literal notranslate"><span class="pre">True</span></code>, load all cached memmap from <a class="reference internal" href="#models.BaseModel.BaseModel.encode_dir" title="models.BaseModel.BaseModel.encode_dir"><code class="xref py py-attr docutils literal notranslate"><span class="pre">models.BaseModel.BaseModel.encode_dir</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>embeddings: np.ndarray of [N, L, D]
+token_ids: np.ndarray of [N, L]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../utils/util.html#utils.util.BaseOutput" title="utils.util.BaseOutput">BaseOutput</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.compute_flops">
+<span class="sig-name descname"><span class="pre">compute_flops</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_token_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_token_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_token_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_token_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.compute_flops" title="Permalink to this definition"></a></dt>
+<dd><p>Compute flops as stated in <a class="reference external" href="https://arxiv.org/pdf/2109.10086.pdf">SPLADE</a>;</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This function uses the cached embedding to compute flops.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseSparseModel.generate_code">
+<span class="sig-name descname"><span class="pre">generate_code</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseSparseModel.generate_code" title="Permalink to this definition"></a></dt>
+<dd><p>Generate codes from the cache embedding files.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="basedensemodel">
+<h2>BaseDenseModel<a class="headerlink" href="#basedensemodel" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">models.BaseModel.</span></span><span class="sig-name descname"><span class="pre">BaseDenseModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel" title="Permalink to this definition"></a></dt>
+<dd><p>Base class for all models that rely on sequence embeddings to rank documents.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.__init__" title="Permalink to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> – the configuration object intialized by <a class="reference internal" href="../utils/manager.html#utils.manager.Manager._post_init_config_from_hydra" title="utils.manager.Manager._post_init_config_from_hydra"><code class="xref py py-func docutils literal notranslate"><span class="pre">utils.manager.Manager._post_init_config_from_hydra()</span></code></a></p></li>
+<li><p><strong>name</strong> – the name of the model</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.metrics">
+<span class="sig-name descname"><span class="pre">metrics</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.metrics" title="Permalink to this definition"></a></dt>
+<dd><p>the metric dictionary containing <code class="docutils literal notranslate"><span class="pre">metric_type:</span> <span class="pre">metric_value</span></code> pairs</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.config">
+<span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.config" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.name">
+<span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.name" title="Permalink to this definition"></a></dt>
+<dd><p>the name of the model</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.index_dir">
+<span class="sig-name descname"><span class="pre">index_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.index_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save index e.g. <a class="reference internal" href="../utils/my_index.html#utils.index.FaissIndex" title="utils.index.FaissIndex"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.index.FaissIndex</span></code></a> and <a class="reference internal" href="../utils/my_index.html#utils.index.InvertedVectorIndex" title="utils.index.InvertedVectorIndex"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.index.InvertedVectorIndex</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.collection_dir">
+<span class="sig-name descname"><span class="pre">collection_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.collection_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save json collections returned by e.g. <a class="reference internal" href="../utils/my_index.html#utils.index.AnseriniBM25Index.fit" title="utils.index.AnseriniBM25Index.fit"><code class="xref py py-func docutils literal notranslate"><span class="pre">utils.index.AnseriniBM25Index.fit()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.encode_dir">
+<span class="sig-name descname"><span class="pre">encode_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.encode_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save text encoding memmap file returned by <a class="reference internal" href="#models.BaseModel.BaseSparseModel.encode_text" title="models.BaseModel.BaseSparseModel.encode_text"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseSparseModel.encode_text()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.query_dir">
+<span class="sig-name descname"><span class="pre">query_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.query_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save query encoding memmap file returned by <a class="reference internal" href="#models.BaseModel.BaseSparseModel.encode_query" title="models.BaseModel.BaseSparseModel.encode_query"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseSparseModel.encode_query()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.retrieval_result_path">
+<span class="sig-name descname"><span class="pre">retrieval_result_path</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.retrieval_result_path" title="Permalink to this definition"></a></dt>
+<dd><p>the path of the final retrieval result file returned by <a class="reference internal" href="#models.BaseModel.BaseModel.retrieve" title="models.BaseModel.BaseModel.retrieve"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseModel.retrieve()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel._rank">
+<span class="sig-name descname"><span class="pre">_rank</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel._rank" title="Permalink to this definition"></a></dt>
+<dd><p>the current process ID</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel._world_size">
+<span class="sig-name descname"><span class="pre">_world_size</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel._world_size" title="Permalink to this definition"></a></dt>
+<dd><p>the number of all processes</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel._distributed">
+<span class="sig-name descname"><span class="pre">_distributed</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel._distributed" title="Permalink to this definition"></a></dt>
+<dd><p>if distributed training/evaluating is enabled</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.logger" title="Permalink to this definition"></a></dt>
+<dd><p>the logger</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MasterLoger</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.faiss_index">
+<span class="sig-name descname"><span class="pre">faiss_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.faiss_index" title="Permalink to this definition"></a></dt>
+<dd><p>Construct <a class="reference internal" href="../utils/my_index.html#utils.index.FaissIndex" title="utils.index.FaissIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">utils.index.FaissIndex</span></code></a></p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.index">
+<span class="sig-name descname"><span class="pre">index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.index" title="Permalink to this definition"></a></dt>
+<dd><p>Wrapper to construct a variety of faiss indexes. Subclass may override this function to create customized index.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.retrieve">
+<span class="sig-name descname"><span class="pre">retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Union" title="(in Python v3.11)"><span class="pre">Union</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.11)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.11)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.retrieve" title="Permalink to this definition"></a></dt>
+<dd><ol class="arabic simple">
+<li><p>Retrieve by the index;</p></li>
+<li><p>Compute auxillary metrics if necessary;</p></li>
+<li><p>Post verify if necessary.</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>retrieval result</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.encode_text">
+<span class="sig-name descname"><span class="pre">encode_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_encode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.encode_text" title="Permalink to this definition"></a></dt>
+<dd><p>Encode each text into a vector.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>load_all_encode</strong> – bool, set to true to load the entire cache file</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>text_embeddings: array of [N, D]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../utils/util.html#utils.util.BaseOutput" title="utils.util.BaseOutput">BaseOutput</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.encode_query">
+<span class="sig-name descname"><span class="pre">encode_query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_query</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_all_encode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.encode_query" title="Permalink to this definition"></a></dt>
+<dd><p>Encode each query into a vector.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>load_all_encode</strong> – bool, set to true to load the entire cache file</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>query_embeddings: array of [N, D]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../utils/util.html#utils.util.BaseOutput" title="utils.util.BaseOutput">BaseOutput</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.cluster">
+<span class="sig-name descname"><span class="pre">cluster</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.cluster" title="Permalink to this definition"></a></dt>
+<dd><p>Perform clusering over cached embeddings.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseDenseModel.generate_code">
+<span class="sig-name descname"><span class="pre">generate_code</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseDenseModel.generate_code" title="Permalink to this definition"></a></dt>
+<dd><p>Generate codes from the cached clusering assignments.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="basegenerativemodel">
+<h2>BaseGenerativeModel<a class="headerlink" href="#basegenerativemodel" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">models.BaseModel.</span></span><span class="sig-name descname"><span class="pre">BaseGenerativeModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel" title="Permalink to this definition"></a></dt>
+<dd><p>Base class for generative models e.g. DSI, WebUltron.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../utils/util.html#utils.util.Config" title="utils.util.Config"><span class="pre">Config</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.__init__" title="Permalink to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> – the configuration object intialized by <a class="reference internal" href="../utils/manager.html#utils.manager.Manager._post_init_config_from_hydra" title="utils.manager.Manager._post_init_config_from_hydra"><code class="xref py py-func docutils literal notranslate"><span class="pre">utils.manager.Manager._post_init_config_from_hydra()</span></code></a></p></li>
+<li><p><strong>name</strong> – the name of the model</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.metrics">
+<span class="sig-name descname"><span class="pre">metrics</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.metrics" title="Permalink to this definition"></a></dt>
+<dd><p>the metric dictionary containing <code class="docutils literal notranslate"><span class="pre">metric_type:</span> <span class="pre">metric_value</span></code> pairs</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.config">
+<span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.config" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.name">
+<span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.name" title="Permalink to this definition"></a></dt>
+<dd><p>the name of the model</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.index_dir">
+<span class="sig-name descname"><span class="pre">index_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.index_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save index e.g. <a class="reference internal" href="../utils/my_index.html#utils.index.FaissIndex" title="utils.index.FaissIndex"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.index.FaissIndex</span></code></a> and <a class="reference internal" href="../utils/my_index.html#utils.index.InvertedVectorIndex" title="utils.index.InvertedVectorIndex"><code class="xref py py-mod docutils literal notranslate"><span class="pre">utils.index.InvertedVectorIndex</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.collection_dir">
+<span class="sig-name descname"><span class="pre">collection_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.collection_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save json collections returned by e.g. <a class="reference internal" href="../utils/my_index.html#utils.index.AnseriniBM25Index.fit" title="utils.index.AnseriniBM25Index.fit"><code class="xref py py-func docutils literal notranslate"><span class="pre">utils.index.AnseriniBM25Index.fit()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.encode_dir">
+<span class="sig-name descname"><span class="pre">encode_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.encode_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save text encoding memmap file returned by <a class="reference internal" href="#models.BaseModel.BaseSparseModel.encode_text" title="models.BaseModel.BaseSparseModel.encode_text"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseSparseModel.encode_text()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.query_dir">
+<span class="sig-name descname"><span class="pre">query_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.query_dir" title="Permalink to this definition"></a></dt>
+<dd><p>the folder to save query encoding memmap file returned by <a class="reference internal" href="#models.BaseModel.BaseSparseModel.encode_query" title="models.BaseModel.BaseSparseModel.encode_query"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseSparseModel.encode_query()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.retrieval_result_path">
+<span class="sig-name descname"><span class="pre">retrieval_result_path</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.retrieval_result_path" title="Permalink to this definition"></a></dt>
+<dd><p>the path of the final retrieval result file returned by <a class="reference internal" href="#models.BaseModel.BaseModel.retrieve" title="models.BaseModel.BaseModel.retrieve"><code class="xref py py-func docutils literal notranslate"><span class="pre">models.BaseModel.BaseModel.retrieve()</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel._rank">
+<span class="sig-name descname"><span class="pre">_rank</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel._rank" title="Permalink to this definition"></a></dt>
+<dd><p>the current process ID</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel._world_size">
+<span class="sig-name descname"><span class="pre">_world_size</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel._world_size" title="Permalink to this definition"></a></dt>
+<dd><p>the number of all processes</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel._distributed">
+<span class="sig-name descname"><span class="pre">_distributed</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel._distributed" title="Permalink to this definition"></a></dt>
+<dd><p>if distributed training/evaluating is enabled</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.logger" title="Permalink to this definition"></a></dt>
+<dd><p>the logger</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MasterLoger</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.code_dir">
+<span class="sig-name descname"><span class="pre">code_dir</span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.code_dir" title="Permalink to this definition"></a></dt>
+<dd><p>we separate the saving folder of generative model</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.trie_index">
+<span class="sig-name descname"><span class="pre">trie_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.trie_index" title="Permalink to this definition"></a></dt>
+<dd><p>Construct <a class="reference internal" href="../utils/my_index.html#utils.index.TrieIndex" title="utils.index.TrieIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">utils.index.TrieIndex</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.index">
+<span class="sig-name descname"><span class="pre">index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.index" title="Permalink to this definition"></a></dt>
+<dd><p>Wrapper to construct a variety of trie indexes. Subclass may override this function to create customized index.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.retrieve">
+<span class="sig-name descname"><span class="pre">retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Union" title="(in Python v3.11)"><span class="pre">Union</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.11)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.11)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.11)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.retrieve" title="Permalink to this definition"></a></dt>
+<dd><ol class="arabic simple">
+<li><p>Retrieve by the index;</p></li>
+<li><p>Save the generated query codes if necessary;</p></li>
+<li><p>Compute auxillary metrics if necessary;</p></li>
+<li><p>Post verify if necessary.</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>retrieval result</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.rerank">
+<span class="sig-name descname"><span class="pre">rerank</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaders</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.11)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.utils.data.DataLoader</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.rerank" title="Permalink to this definition"></a></dt>
+<dd><p>Evaluate by reranking.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="models.BaseModel.BaseGenerativeModel.encode_text">
+<span class="sig-name descname"><span class="pre">encode_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loader_text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.utils.data.DataLoader</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#models.BaseModel.BaseGenerativeModel.encode_text" title="Permalink to this definition"></a></dt>
+<dd><p>Encode each text into its code.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Models" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../scripts/index.html" class="btn btn-neutral float-right" title="Scripts" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, namespace-Pt.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

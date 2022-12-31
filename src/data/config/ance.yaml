@@ -1,0 +1,24 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: MSMARCO-passage
+  - model: dense
+  - index: faiss
+  - train: neg
+  - eval: retrieve
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  plm: bert
+
+model:
+  model_type: dpr
+
+index:
+  index_type: Flat
+
+train:
+  batch_size: 128
+  learning_rate: 3e-5
+  hard_neg_type: DPR

@@ -1,0 +1,3 @@
+defaults:
+  # essential to relocate the package
+  - /_default@_group_

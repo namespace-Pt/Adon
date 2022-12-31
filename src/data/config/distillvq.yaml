@@ -1,0 +1,44 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: MSMARCO-passage
+  - model: dense
+  - index: faiss
+  - train: neg
+  - eval: retrieve
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+model:
+  model_type: distillvq
+
+  return_embedding: true
+  embedding_src: RetroMAE
+
+  # dynamically update ivf assignments
+  train_ivf_assign: False
+  # dynamically update pq assignments
+  train_pq_assign: False
+  # train query encoder together with the index
+  train_encoder: False
+  # freeze pq centroids, only update IVF centroids
+  freeze_pq: False
+
+index:
+  index_type: OPQ96,PQ96x8
+
+train:
+  distill_src: RetroMAE
+  objective: kd
+
+  epoch: 50
+  batch_size: 128
+  hard_neg_num: 31
+
+  learning_rate: 1e-5
+  learning_rate_pq: 1e-4
+  learning_rate_ivf: 1e-4
+  scheduler: linear
+
+eval:
+  eval_posting_length: True

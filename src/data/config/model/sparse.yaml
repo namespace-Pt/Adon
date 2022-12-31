@@ -1,0 +1,13 @@
+defaults:
+  - _default
+
+# the number of tokens to keep in text
+text_gate_k: 0
+# the number of tokens to keep in query
+query_gate_k: 0
+
+# return the attention mask for the first occurance of a token in a piece of text
+return_first_mask: False
+# return attention mask for the eos/sep token
+return_sep_mask: False
+

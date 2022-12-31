@@ -1,0 +1,12 @@
+defaults:
+  - _default
+
+dataset: MSMARCO-document
+text_length: 512
+query_length: 32
+
+plm: bert
+
+# title + body
+text_col: [2, 3]
+text_col_sep: "sep"

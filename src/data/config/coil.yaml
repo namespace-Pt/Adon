@@ -12,6 +12,7 @@ defaults:
 model:
   model_type: coil
   return_sep_mask: True
+  token_dim: 32
 
 index:
   index_type: invvec
@@ -22,4 +23,3 @@ train:
 eval:
   eval_efficiency: True
   eval_posting_length: True
-  eval_flops: True

@@ -624,13 +624,12 @@ class NMTTrainDataset(BaseDataset):
 
         if query_idx >= self.query_num:
             new_query_idx = query_idx - self.query_num
-            query_token_id = self.doct5_token_ids[new_query_idx].tolist()
-            query = self.prepare_for_model(query_token_id, self.config.query_length)
-
+            query_token_id = self.doct5_token_ids[new_query_idx]
         else:
             query_token_id = self.query_token_ids[query_idx]
-            query_token_id = query_token_id[query_token_id != -1].tolist()
-            query = self.prepare_for_model(query_token_id, self.config.query_length)
+
+        query_token_id = query_token_id[query_token_id != -1].tolist()
+        query = self.prepare_for_model(query_token_id, self.config.query_length)
 
         # remove the leading padding token
         text_code = self.text_codes[text_idx].astype(np.int64)
@@ -642,6 +641,5 @@ class NMTTrainDataset(BaseDataset):
             "text_code": text_code
         }
         return return_dict
-
 
 

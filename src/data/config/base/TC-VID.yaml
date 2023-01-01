@@ -1,0 +1,16 @@
+defaults:
+  - _default
+  - _self_
+
+data_root: /works/Adhoc-Retrieval/TianChi
+
+dataset: TC-VID
+plm: bert-chinese
+text_length: 32
+query_length: 8
+
+max_text_length: 128
+max_query_length: 32
+
+text_col: [1]
+text_col_sep: "sep"

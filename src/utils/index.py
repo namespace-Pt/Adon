@@ -8,6 +8,8 @@ import subprocess
 import numpy as np
 import torch.multiprocessing as mp
 import torch.distributed as dist
+# lazy import to avoid cuda error message
+from torch_scatter import scatter_max
 from copy import copy
 from tqdm import tqdm
 from typing import Dict, List
@@ -302,8 +304,6 @@ class BaseInvertedIndex(BaseIndex):
             text_embeddings
         """
         self.logger.info("fitting inverted index...")
-        # lazy import to avoid cuda error message
-        from torch_scatter import scatter_max
 
         # load the posting lists when we specify load_index, or when the model do not need to rebuild index
         if (load_index or not rebuild_index) and os.path.exists(self.text_idx_inverted_lists_path) and not save_index:
@@ -548,14 +548,18 @@ class InvertedVectorIndex(BaseInvertedIndex):
                 embedding_posting_list = self.text_embeddings[text_idx_posting_list, token_idx_posting_list]
                 if query_embeddings is not None:
                     token_embedding = query_embeddings[qidx, j]
-                    if token_embedding == 0:
+                    if token_embedding.size(0) == 1 and token_embedding == 0:
                         continue
                     score = embedding_posting_list @ token_embedding  # n
                 else:
+                    assert query_embeddings.shape[-1] == 1, "Found query_embeddings is None but output_dim > 1!"
                     score = embedding_posting_list.squeeze(-1)
 
-                # TODO: scatter_max
-                global_score[text_idx_posting_list] += score
+                if embedding_posting_list.shape[-1] > 1:
+                    score = scatter_max(score, index=text_idx_posting_list, dim_size=self.text_num)[0]
+                    global_score += score
+                else:
+                    global_score[text_idx_posting_list] += score
 
             tscores, tindices = global_score.topk(hits)  # k
 
@@ -626,7 +630,7 @@ class BaseAnseriniIndex(BaseIndex):
         file_index = 0
         with open(collection_path, encoding='utf-8') as f:
             for i, line in enumerate(tqdm(f, ncols=100)):
-                columns = line.rstrip().split('\t')
+                columns = line.split('\t')
                 doc_id = columns[0]
 
                 text = []
@@ -983,32 +987,32 @@ class AnseriniBM25Index(BaseAnseriniIndex):
                 shell=True
             )
         else:
-            subprocess.run(f"""
-                python -m pyserini.search.lucene \
-                --index {self.index_dir} \
-                --topics {topics} \
-                --output {output} --output-format msmarco \
-                --threads 32 \
-                --bm25 --k1 {k1} --b {b} \
-                --hits {hits} \
-                --language {language}
-                """,
-                shell=True
-            )
             # subprocess.run(f"""
-            #     sh anserini/target/appassembler/bin/SearchCollection \
-            #     -topicreader TsvString -format msmarco \
-            #     -index {self.index_dir} \
-            #     -topics {topics} \
-            #     -output {output} \
-            #     -threads 32 \
-            #     -parallelism 4 \
-            #     -bm25 -bm25.k1 {k1} -bm25.b {b} \
-            #     -hits {hits} \
-            #     -language {language}
+            #     python -m pyserini.search.lucene \
+            #     --index {self.index_dir} \
+            #     --topics {topics} \
+            #     --output {output} --output-format msmarco \
+            #     --threads 32 \
+            #     --bm25 --k1 {k1} --b {b} \
+            #     --hits {hits} \
+            #     --language {language}
             #     """,
             #     shell=True
             # )
+            subprocess.run(f"""
+                sh anserini/target/appassembler/bin/SearchCollection \
+                -topicreader TsvString -format msmarco \
+                -index {self.index_dir} \
+                -topics {topics} \
+                -output {output} \
+                -threads 32 \
+                -parallelism 4 \
+                -bm25 -bm25.k1 {k1} -bm25.b {b} \
+                -hits {hits} \
+                -language {language}
+                """,
+                shell=True
+            )
 
 
     def search(self, query_path:str, retrieval_result_path:str, hits:int, qid2index:ID_MAPPING, tid2index:ID_MAPPING, query_token_ids:Optional[np.ndarray]=None, tmp_query_dir:Optional[str]=None, language:str="eng", k1:float=0.82, b:float=0.68, verifier:Optional[BasePostVerifier]=None, **kwargs) -> RETRIEVAL_MAPPING:

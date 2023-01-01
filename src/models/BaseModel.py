@@ -818,7 +818,7 @@ class BaseSparseModel(BaseModel):
             the query token embedding for indexing, array of [B, L, D]
         """
         query_token_id = x["query"]["input_ids"].numpy()
-        query_token_embedding = torch.ones((*query_token_id.shape, self._output_dim), dtype=np.float32)
+        query_token_embedding = np.ones((*query_token_id.shape, self._output_dim), dtype=np.float32)
         return query_token_id, query_token_embedding
 
 
@@ -1157,7 +1157,7 @@ class BaseSparseModel(BaseModel):
                 retrieval_result = index.search(
                     query_token_ids=query_token_ids,
                     query_path=query_path,
-                    tmp_query_dir=os.path.join(self.config.cache_root, "index", "query"),
+                    tmp_query_dir=os.path.join(self.config.cache_root, "index", self.name, "query"),
                     retrieval_result_path=self.retrieval_result_path,
                     hits=self.config.hits,
                     qid2index=qid2index,
@@ -1898,6 +1898,7 @@ class BaseGenerativeModel(BaseModel):
                 output_scores=True,
                 num_return_sequences=self.config.hits,
                 num_beams=self.config.nbeam,
+                length_penalty=self.config.length_penalty,
                 prefix_allowed_tokens_fn=prefix_allowed_tokens_fn
             )
 
@@ -1991,6 +1992,7 @@ class BaseGenerativeModel(BaseModel):
                 output_scores=True,
                 num_return_sequences=self.config.hits,
                 num_beams=self.config.nbeam,
+                length_penalty=self.config.length_penalty,
                 prefix_allowed_tokens_fn=prefix_allowed_tokens_fn
             )
 

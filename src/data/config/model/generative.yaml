@@ -16,3 +16,6 @@ return_doct5: False
 query_per_doc: 10
 # the beams when decoding
 nbeam: 10
+
+# length penalty
+length_penalty: 1.0

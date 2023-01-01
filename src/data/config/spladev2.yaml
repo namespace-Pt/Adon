@@ -4,7 +4,7 @@ defaults:
   - base: MSMARCO-passage
   - model: sparse
   - index: inv
-  - train: triple-raw
+  - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
   - _self_
@@ -28,10 +28,6 @@ train:
   learning_rate: 2e-5
   scheduler: linear
 
-  eval_step: 10000
-  hold_step: 50000
-  warmup: 6000
-  total_step: 150000
   lambda_warmup_step: 50000
 
 eval:

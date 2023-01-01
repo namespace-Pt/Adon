@@ -68,9 +68,9 @@ class SPARTA(BaseSparseModel):
         """
         text = self._move_to_device(x["text"])
         text_token_embedding = self._encode_text(**text)    # B, L, D
-        vocab_embedding = self.plm.embeddings.word_embeddings   # V, D
+        vocab_embedding = self.plm.embeddings.word_embeddings.weight   # V, D
         text_token_embedding = torch.einsum("vd,bld->bvl", vocab_embedding, text_token_embedding)   # B, V, L
-        text_embedding = torch.log(torch.relu(text_token_embedding.max(-1)) + 1)    # B, V
+        text_embedding = torch.log(torch.relu(text_token_embedding.max(-1)[0]) + 1)    # B, V
 
         text_token_id, text_token_weight = text_embedding.topk(k=self._text_length)
         return text_token_id.cpu().numpy(), text_token_weight.unsqueeze(-1).cpu().numpy()

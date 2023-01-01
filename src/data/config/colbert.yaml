@@ -13,6 +13,7 @@ base:
 
 model:
   model_type: colbert
+  token_dim: 128
 
 train:
   batch_size: 128

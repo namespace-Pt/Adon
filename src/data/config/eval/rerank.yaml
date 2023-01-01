@@ -16,7 +16,7 @@ eval_metric_cutoff: [10,100,1000]
 hits: 1000
 
 # candidates used in pair dataset
-candidate_type: none
+candidate_type: BM25
 # candidate number for each query
 candidate_num: 1000
 

@@ -1,8 +1,8 @@
 # the root directory of the raw data
-data_root: /sharefs/webbrain/peitian/Data
-plm_root: /sharefs/webbrain/peitian/Data/PLM
-world_size: 1
-seed: 3407
+data_root: /works/Adhoc-Retrieval
+plm_root: /works/huggingface-PLMs
+seed: 42
 
 mode: train
-
+# the device to run the model or script
+device: 0

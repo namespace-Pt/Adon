@@ -1,15 +1,6 @@
-import os
 import torch
-import faiss
-import numpy as np
-import torch.nn as nn
 import torch.nn.functional as F
-from tqdm import tqdm
-from collections import defaultdict
-from transformers import AutoModelForSequenceClassification, T5Model, T5ForConditionalGeneration
-from transformers.modeling_outputs import BaseModelOutput
-from utils.index import TrieIndex, permute_code
-from utils.util import BaseOutput, load_pickle
+from transformers import AutoModelForSequenceClassification
 from .BaseModel import BaseModel
 
 
@@ -93,4 +84,5 @@ class CrossEncoder(BaseModel):
             loss = F.binary_cross_entropy(torch.sigmoid(score), label)
 
         return loss
+
 

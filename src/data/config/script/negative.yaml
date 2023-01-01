@@ -15,4 +15,3 @@ base:
 
 hard_neg_type: BM25
 name: default
-hg_neg_type: bm25

@@ -20,4 +20,4 @@ train:
   learning_rate: 3e-5
 
 eval:
-  batch_size_eval: 500
+  eval_batch_size: 500

@@ -4,6 +4,7 @@
 #
 #    pip-compile '.\requirements.in'
 #
+--index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 alabaster==0.7.12
     # via sphinx
@@ -41,6 +42,8 @@ mdit-py-plugins==0.3.1
 mdurl==0.1.2
     # via markdown-it-py
 myst-parser==0.18.1
+    # via -r .\requirements.in
+numpy==1.23.5
     # via -r .\requirements.in
 packaging==21.3
     # via sphinx

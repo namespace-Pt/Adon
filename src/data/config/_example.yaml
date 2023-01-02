@@ -14,5 +14,5 @@ train:
   batch_size: 2
 
 eval:
-  batch_size_eval: 2
+  eval_batch_size: 2
   num_worker: 0

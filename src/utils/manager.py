@@ -317,7 +317,7 @@ class Manager():
                 sampler_passage = Sequential_Sampler(len(dataset_passage), num_replicas=self.config.world_size, rank=self.config.rank)
             else:
                 sampler_passage = Sequential_Sampler(len(dataset_passage), num_replicas=1, rank=0)
-            loaders["text"] = DataLoader(dataset_passage, batch_size=self.config.batch_size_eval, sampler=sampler_passage, num_workers=self.config.num_worker, collate_fn=default_collate)
+            loaders["text"] = DataLoader(dataset_passage, batch_size=self.config.eval_batch_size, sampler=sampler_passage, num_workers=self.config.num_worker, collate_fn=default_collate)
 
         if self.config.loader_query != "none":
             dataset_query = QueryDataset(self.config, mode=self.config.eval_set, data_format=self.config.loader_query)
@@ -325,12 +325,12 @@ class Manager():
                 sampler_query = Sequential_Sampler(len(dataset_query), num_replicas=self.config.world_size, rank=self.config.rank)
             else:
                 sampler_query = Sequential_Sampler(len(dataset_query), num_replicas=1, rank=0)
-            loaders["query"] = DataLoader(dataset_query, batch_size=self.config.batch_size_eval, sampler=sampler_query, num_workers=self.config.num_worker, collate_fn=default_collate)
+            loaders["query"] = DataLoader(dataset_query, batch_size=self.config.eval_batch_size, sampler=sampler_query, num_workers=self.config.num_worker, collate_fn=default_collate)
 
         if self.config.get("loader_rerank") != "none":
             dataset_rerank = PairDataset(self.config, self.config.eval_set, data_format=self.config.loader_rerank)
             sampler_rerank = Sequential_Sampler(len(dataset_rerank), num_replicas=self.config.world_size, rank=self.config.rank)
-            loaders["rerank"] = DataLoader(dataset_rerank, batch_size=self.config.batch_size_eval, sampler=sampler_rerank, num_workers=self.config.num_worker, collate_fn=default_collate)
+            loaders["rerank"] = DataLoader(dataset_rerank, batch_size=self.config.eval_batch_size, sampler=sampler_rerank, num_workers=self.config.num_worker, collate_fn=default_collate)
 
         # import psutil
         # memory_consumption = round(psutil.Process().memory_info().rss / 1e6)

@@ -1809,6 +1809,16 @@ class BaseGenerativeModel(BaseModel):
         self.code_dir = os.path.join(self.config.cache_root, "codes", self.name if self.config.code_type == "self" else self.config.code_type, self.config.code_tokenizer, str(self.config.code_length))
 
 
+    def _generate(self, **kargs):
+        """
+        Generation function to be used when searching.
+        """
+        codes = self.plm.generate(
+            **kargs
+        )
+        return codes
+
+
     @synchronize
     @torch.no_grad()
     def encode_text(self, loader_text:DataLoader):
@@ -1869,8 +1879,6 @@ class BaseGenerativeModel(BaseModel):
         Returns:
             retrieval result
         """
-        loader_query = loaders["query"]
-
         trie = self.index(loaders).index
         loader_query = loaders["query"]
 
@@ -1885,7 +1893,8 @@ class BaseGenerativeModel(BaseModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
-        query_codes = np.full((len(loader_query.sampler), self.config.hits, self.config.code_length), trie.pad_token_id, dtype=np.int32)
+        if self.config.save_encode:
+            query_codes = np.full((len(loader_query.sampler), self.config.hits, self.config.code_length), trie.pad_token_id, dtype=np.int32)
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
             query = self._move_to_device(x["query"])
@@ -1907,16 +1916,21 @@ class BaseGenerativeModel(BaseModel):
             scores = outputs.sequences_scores.view(B, N).cpu().numpy()    # B, n
             # cache the codes
             end_idx = start_idx + B
-            query_codes[start_idx: end_idx, :, :codes.shape[-1]] = codes
 
-            for j in range(start_idx, end_idx):
+            if self.config.save_encode:
+                query_codes[start_idx: end_idx, :, :codes.shape[-1]] = codes
+
+            for j, batch_code in enumerate(codes):
                 res = defaultdict(list)
-                for k, c in enumerate(query_codes[j]):
+                for k, c in enumerate(batch_code):
+                    # sometimes the generated code may stop at early steps, just do padding otherwise the leaf cannot be found
+                    if len(c) < self.config.code_size:
+                        c = c.tolist() + [0] * (self.config.code_size - len(c))
                     ids = trie[c]
                     for id in ids:
-                        res[id].append(scores[j - start_idx, k])
+                        res[id].append(scores[j, k])
                 # may be duplicated doc ids (1 doc with 2 codes)
-                retrieval_result[j + query_start_idx] = [(k, max(v)) for k, v in res.items()]
+                retrieval_result[j + start_idx + query_start_idx] = [(k, max(v)) for k, v in res.items()]
 
             start_idx = end_idx
 
@@ -1924,10 +1938,9 @@ class BaseGenerativeModel(BaseModel):
                 if i > 2:
                     break
 
-
         if self.config.save_encode:
             self.save_to_mmp(
-                os.path.join(self.query_dir, "codes.mmp"),
+                os.path.join(self.retrieve_dir, "query_codes.mmp"),
                 shape=(len(loader_query.dataset), self.config.hits, self.config.code_length),
                 dtype=query_codes.dtype,
                 loader=loader_query,
@@ -1942,7 +1955,7 @@ class BaseGenerativeModel(BaseModel):
     def rerank(self, loaders:LOADERS):
         """Evaluate by reranking.
         """
-        assert self.config.batch_size_eval == 1, "Reranking must be performed with batch_size_eval=1!"
+        assert self.config.eval_batch_size == 1, "Reranking by generation must be performed with eval_batch_size=1!"
 
         loader_query = loaders["query"]
         loader_text = loaders["text"]
@@ -1957,6 +1970,9 @@ class BaseGenerativeModel(BaseModel):
 
         self.logger.info(f"reranking...")
 
+        # in case the query is parallel
+        query_start_idx = loader_query.sampler.start
+
         if os.path.exists(self.config.candidate_type):
             candidate_path = self.config.candidate_type
         elif os.path.exists(os.path.join(self.config.cache_root, "retrieve", self.config.candidate_type, self.config.eval_set, "retrieval_result.pkl")):
@@ -1968,13 +1984,17 @@ class BaseGenerativeModel(BaseModel):
         candidates = load_pickle(candidate_path)
 
         # save the generated codes for each query
-        query_codes = np.full((len(loader_query.sampler), self.config.hits, self.config.code_length), self.config.special_token_ids["pad"][1], dtype=np.int32)
+        if self.config.save_encode:
+            query_codes = np.full((len(loader_query.sampler), self.config.hits, self.config.code_length), self.config.special_token_ids["pad"][1], dtype=np.int32)
 
         retrieval_result = {}
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
+            # the query may be paralleled, however, the query_idx returned from the dataloader is always the correst global index
+            query_idx = x["query_idx"].tolist()[0]
             query = self._move_to_device(x["query"])
-            candidate = candidates[x["query_idx"].tolist()[0]]
+
+            candidate = candidates[query_idx]
 
             trie = TRIE_INDEX_MAP[self.config.index_type](
                 save_dir=os.path.join(self.code_dir, "tries"),
@@ -2000,14 +2020,18 @@ class BaseGenerativeModel(BaseModel):
             scores = outputs.sequences_scores.view(self.config.hits).cpu().numpy()    # n
 
             # cache the codes
-            query_codes[i, :, :codes.shape[-1]] = codes
+            if self.config.save_encode:
+                query_codes[query_idx, :, :codes.shape[-1]] = codes
 
             res = defaultdict(list)
-            for k, c in enumerate(query_codes[i]):
+            for k, c in enumerate(codes):
+                # sometimes the generated code may stop at early steps, just do padding otherwise the leaf cannot be found
+                if len(c) < self.config.code_size:
+                    c = c.tolist() + [0] * (self.config.code_size - len(c))
                 ids = trie[c]
                 for id in ids:
                     res[id].append(scores[k])
-            retrieval_result[i] = [(k, max(v)) for k, v in res.items()]
+            retrieval_result[query_idx] = [(k, max(v)) for k, v in res.items()]
 
             if self.config.debug:
                 if i > 2:
@@ -2015,14 +2039,13 @@ class BaseGenerativeModel(BaseModel):
 
         if self.config.save_encode:
             self.save_to_mmp(
-                os.path.join(self.query_dir, "codes.mmp"),
+                os.path.join(self.retrieve_dir, "query_codes.mmp"),
                 shape=(len(loader_query.dataset), self.config.hits, self.config.code_length),
                 dtype=query_codes.dtype,
                 loader=loader_query,
                 obj=query_codes
             )
 
-        retrieval_result = self.gather_retrieval_result(retrieval_result)
         return retrieval_result
 
 

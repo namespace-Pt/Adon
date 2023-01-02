@@ -14,13 +14,6 @@ class DSI(BaseGenerativeModel):
             self.plm.resize_token_embeddings(config.vocab_size + config.code_size)
 
 
-    def _generate(self, **kargs):
-        codes = self.plm.generate(
-            **kargs
-        )
-        return codes
-
-
     def forward(self, x):
         x = self._move_to_device(x)
         query = x["query"]

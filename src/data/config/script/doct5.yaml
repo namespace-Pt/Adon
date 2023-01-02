@@ -13,7 +13,7 @@ base:
   # default to evaluation mode
   mode: script
 
-batch_size_eval: 50
+eval_batch_size: 50
 # how many queries to generate for each document
 query_per_doc: 10
 # load previously stored memmap file?

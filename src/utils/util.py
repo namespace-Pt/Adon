@@ -837,10 +837,10 @@ class Config:
         """
         Set up distributed nccl backend.
         """
-        self._local_world_size = int(os.environ.get("LOCAL_WORLD_SIZE", 1))
-        self._local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        self._global_world_size = int(os.environ.get("WORLD_SIZE", 1))
-        self._global_rank = int(os.environ.get("RANK", 0))
+        self.__local_world_size = int(os.environ.get("LOCAL_WORLD_SIZE", 1))
+        self.__local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        self.__global_world_size = int(os.environ.get("WORLD_SIZE", 1))
+        self.__global_rank = int(os.environ.get("RANK", 0))
 
         # set by torchrun
         if self.world_size > 1 and not dist.is_initialized():
@@ -857,18 +857,18 @@ class Config:
 
             # manager.device will be invoked in the model
             # set the device to the local rank because we may use multi-node distribution
-            self.device = self._local_rank
+            self.device = self.__local_rank
             # essential to make all_gather_object work properly
             torch.cuda.set_device(self.device)
 
     @property
     def rank(self):
         # if multi-node distributed, only supports them sharing the same file system
-        return self._global_rank
+        return self.__global_rank
 
     @property
     def world_size(self):
-        return self._global_world_size
+        return self.__global_world_size
 
     @property
     def is_main_proc(self):

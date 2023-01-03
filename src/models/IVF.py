@@ -9,7 +9,7 @@ from tqdm import tqdm
 from transformers import AutoModel
 from .BaseModel import BaseSparseModel
 from .COIL import UniCOIL
-from utils.util import BaseOutput, readlink
+from utils.util import BaseOutput, synchronize
 from utils.index import FaissIndex, VERIFIER_MAP, merge_retrieval_result, pq_quantize
 from utils.typings import *
 
@@ -22,7 +22,7 @@ class TopIVF(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
 
-        path = os.path.join(config.cache_root, "index", config.vq_src, "index", config.vq_index)
+        path = os.path.join(config.cache_root, "index", config.vq_src, "faiss", config.vq_index)
         self.logger.info(f"loading index from {path}...")
         index = faiss.read_index(path)
         assert isinstance(index, faiss.IndexIVFPQ), "Make sure the index is IVFPQ index!"
@@ -109,7 +109,7 @@ class TopIVF(BaseSparseModel):
         return embedding
 
 
-    def _quantize_ivf_query(self, query_embedding:TENSOR, k:Optional[int]) -> TENSOR:
+    def _quantize_ivf_query(self, query_embedding:TENSOR, k:Optional[int]=None) -> TENSOR:
         if k is None:
             k = self._query_length
         ivf_quantization = query_embedding.matmul(self.ivfCentroids.transpose(-1, -2)) # B, ncluster
@@ -222,6 +222,7 @@ class TopIVF(BaseSparseModel):
         return query_ivf_id.cpu().numpy(), query_ivf_weight.unsqueeze(-1).cpu().numpy()
 
 
+    @synchronize
     @torch.no_grad()
     def encode_text(self, loader_text:DataLoader, load_all_encode:bool=False):
         """
@@ -235,8 +236,6 @@ class TopIVF(BaseSparseModel):
                 text_embeddings: array of [N, L, D]
                 text_token_ids: array of [N, L]
         """
-        # just for neat printing
-        self._synchronize()
         text_token_id_path = os.path.join(self.encode_dir, "text_token_ids.mmp")
         text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
 
@@ -323,7 +322,7 @@ class IVF(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
 
-        path = os.path.join(config.cache_root, "index", config.vq_src, "index", config.vq_index)
+        path = os.path.join(config.cache_root, "index", config.vq_src, "faiss", config.vq_index)
         self.logger.info(f"loading index from {path}...")
         index = faiss.read_index(path)
         if isinstance(index, faiss.IndexPreTransform):
@@ -373,9 +372,9 @@ class IVF(BaseSparseModel):
         return query_ivf_id.cpu().numpy(), query_ivf_weight.unsqueeze(-1).cpu().numpy()
 
 
+    @synchronize
     @torch.no_grad()
     def encode_text(self, loader_text, load_all_encode=False):
-        self._synchronize()
         text_token_id_path = os.path.join(self.encode_dir, "text_token_ids.mmp")
         text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
 

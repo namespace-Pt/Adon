@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: inv
+  - index: invvec
   - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
@@ -19,9 +19,6 @@ model:
   query_lambda: 3e-2
   text_decode_k: 256
   query_decode_k: 64
-
-index:
-  index_type: invvec
 
 train:
   batch_size: 64

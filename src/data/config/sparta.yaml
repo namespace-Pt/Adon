@@ -3,14 +3,11 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: inv
+  - index: invvec
   - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
   - _self_
-
-index:
-  index_type: invvec
 
 model:
   model_type: sparta
@@ -21,6 +18,5 @@ train:
   learning_rate: 3e-5
 
 eval:
-  eval_efficiency: True
   eval_posting_length: True
   eval_flops: True

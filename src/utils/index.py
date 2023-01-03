@@ -6,15 +6,14 @@ import time
 import shutil
 import subprocess
 import numpy as np
-import torch.multiprocessing as mp
-import torch.distributed as dist
+import multiprocessing as mp
 # lazy import to avoid cuda error message
 from torch_scatter import scatter_max
 from copy import copy
 from tqdm import tqdm
 from typing import Dict, List
 from collections import defaultdict
-from .util import save_pickle, load_pickle, MasterLogger, makedirs, isempty
+from .util import save_pickle, load_pickle, MasterLogger, makedirs, isempty, synchronize
 from .typings import *
 
 
@@ -283,6 +282,7 @@ class BaseInvertedIndex(BaseIndex):
             self.token_idx_inverted_lists_path = os.path.join(save_dir, f"token_idx_inverted_lists_{self.device.index}.pt")
 
 
+    @synchronize
     def fit(self, text_token_ids:np.ndarray, text_embeddings:np.ndarray, rebuild_index:bool=False, load_index:bool=False, save_index:bool=True, threads:int=32):
         """
         1. Populate the inverted lists;
@@ -312,6 +312,7 @@ class BaseInvertedIndex(BaseIndex):
         # construct posting lists when the model needs to rebuild index, or when the posting lists doesn't exist
         elif rebuild_index or not os.path.exists(self.text_idx_inverted_lists_path):
             text_num_per_thread = len(text_token_ids) / threads
+            # tmp_dir = os.path.join(self.save_dir, "posting_lists_tmp", str(self.device.index))
             arguments = []
             for i in range(threads):
                 start_idx = round(text_num_per_thread * i)
@@ -322,21 +323,25 @@ class BaseInvertedIndex(BaseIndex):
                     # offset to this shard
                     start_idx,
                     self.token_num,
-                    self.special_token_ids
+                    self.special_token_ids,
+                    # os.path.join(tmp_dir, f"{i}.txt")
                 ))
 
             with mp.Pool(threads) as p:
-                outputs = p.starmap(build_inverted_lists, arguments)
+                # imap returns an iterator
+                outputs = p.imap(build_inverted_lists, arguments)
 
-            text_idx_inverted_lists = [[] for _ in range(self.token_num)]
-            token_idx_inverted_lists = [[] for _ in range(self.token_num)]
+                text_idx_inverted_lists = [[] for _ in range(self.token_num)]
+                token_idx_inverted_lists = [[] for _ in range(self.token_num)]
 
-            for inv_lists_pair in tqdm(outputs, ncols=100, leave=False, desc="Merging Shards"):
-                text_idx_inverted_list = inv_lists_pair[0]
-                token_idx_inverted_list = inv_lists_pair[1]
-                for i in range(self.token_num):
-                    text_idx_inverted_lists[i].extend(text_idx_inverted_list[i])
-                    token_idx_inverted_lists[i].extend(token_idx_inverted_list[i])
+                for inv_lists_pair in tqdm(outputs, ncols=100, leave=False, desc="Merging Shards"):
+                    text_idx_inverted_list = inv_lists_pair[0]
+                    token_idx_inverted_list = inv_lists_pair[1]
+                    for j in range(self.token_num):
+                        text_idx_inverted_lists[j].extend(text_idx_inverted_list[j])
+                        token_idx_inverted_lists[j].extend(token_idx_inverted_list[j])
+
+            synchronize()
 
             for i in tqdm(range(self.token_num), ncols=100, leave=False, desc="Packing Posting Lists"):
                 text_indices = text_idx_inverted_lists[i]
@@ -352,6 +357,8 @@ class BaseInvertedIndex(BaseIndex):
                 torch.save(token_idx_inverted_lists, self.token_idx_inverted_lists_path)
             self.text_idx_inverted_lists = text_idx_inverted_lists
             self.token_idx_inverted_lists = token_idx_inverted_lists
+
+            synchronize()
 
         else:
             raise NotImplementedError(f"Conflict Option: rebuild_index={rebuild_index}, load_index={load_index}, save_index={save_index}!")
@@ -649,7 +656,7 @@ class BaseAnseriniIndex(BaseIndex):
         output_jsonl_file.close()
 
 
-    def prepare_query(self, query_path, query_token_ids, qid2index, tmp_query_dir):
+    def prepare_query(self, query_path, query_token_ids, query_token_weights, qid2index, tmp_query_dir):
         qids = []
         qcontents = []
         if query_token_ids is None:
@@ -660,13 +667,41 @@ class BaseAnseriniIndex(BaseIndex):
                     qcontents.append(qcontent.strip())
         else:
             qindex2id = {v: k for k, v in qid2index.items()}
-            for i, token_id in enumerate(query_token_ids):
-                filtered_token_id = token_id[token_id != -1]
-                tokens = self.tokenizer.convert_ids_to_tokens(filtered_token_id, skip_special_tokens=True)
-                if isinstance(self.stop_words, set):
-                    tokens = [x for x in tokens if x not in self.stop_words]
-                qids.append(qindex2id[i].strip())
-                qcontents.append(" ".join(tokens))
+            if query_token_weights is not None:
+                query_token_weights = self._quantize(query_token_weights)
+                for i, token_id in enumerate(query_token_ids):
+                    unique_token_id = defaultdict(list)
+                    token = self.tokenizer.convert_ids_to_tokens(token_id)
+                    for j, tok in enumerate(token):
+                        if tok in self.stop_words:
+                            continue
+                        impact = query_token_weights[i, j]
+                        if impact <= 0:
+                            continue
+                        unique_token_id[tok].append(impact)
+
+                    new_token_list = []
+                    for tok, weights in unique_token_id.items():
+                        # use the max score
+                        weight = max(weights)
+                        # use replication to control token weight
+                        new_token_list += [tok] * weight
+
+                    qids.append(qindex2id[i].strip())
+                    qcontents.append(" ".join(new_token_list))
+            else:
+                for i, token_id in enumerate(query_token_ids):
+                    token = self.tokenizer.convert_ids_to_tokens(token_id)
+                    new_token_list = []
+                    for j, tok in enumerate(token):
+                        if tok == -1:
+                            continue
+                        if tok in self.stop_words:
+                            continue
+                        new_token_list.append(tok)
+
+                    qids.append(qindex2id[i].strip())
+                    qcontents.append(" ".join(new_token_list))
 
         # needs splitting
         if len(qids) > 10000:
@@ -703,7 +738,7 @@ class AnseriniImpactIndex(BaseAnseriniIndex):
     def __init__(self, collection_path:str, collection_dir:str, index_dir:str) -> None:
         """
         Args:
-            quantize_bits: the quantization bits
+            quantize_bit: the quantization bits
             tokenizer: transformers tokenizer
             subword_to_word: collect subwords to words, e.g. :func:`utils.index.subword_to_word_bert`
             collection_path: the collection file path
@@ -714,7 +749,12 @@ class AnseriniImpactIndex(BaseAnseriniIndex):
         super().__init__(collection_path, collection_dir, index_dir)
 
 
-    def fit(self, text_token_ids:np.ndarray, text_token_weights:np.ndarray, quantize_bits:int, tokenizer:Any, subword_to_word:Callable, stop_words:set, reduce:str, thread_num:int=32, enable_build_collection:bool=True, enable_build_index:bool=True, language:str="eng"):
+    def _quantize(self, token_weights, quantize_bit=None):
+        token_weights = np.ceil(token_weights * 100).astype(int)
+        return token_weights
+
+
+    def fit(self, text_token_ids:np.ndarray, text_token_weights:np.ndarray, quantize_bit:int, tokenizer:Any, subword_to_word:Callable, stop_words:set, reduce:str, thread_num:int=32, enable_build_collection:bool=True, enable_build_index:bool=True, language:str="eng", **kwargs):
         """
         1. Collect tokens into words and create json collection.
 
@@ -731,11 +771,12 @@ class AnseriniImpactIndex(BaseAnseriniIndex):
         self.stop_words = stop_words
 
         if enable_build_collection:
-            if quantize_bits > 0:
-                max_impact = text_token_weights.max().item()
-                # quantize
-                scale = (1 << quantize_bits) / max_impact
-                text_token_weights = (text_token_weights * scale).astype(np.uint8)
+            # if quantize_bit > 0:
+            #     max_impact = text_token_weights.max().item()
+            #     # quantize
+            #     scale = (1 << quantize_bit) / max_impact
+            #     text_token_weights = (text_token_weights * scale).astype(np.int32)
+            text_token_weights = self._quantize(text_token_weights, quantize_bit)
 
             # each thread creates one jsonl file
             text_num = len(text_token_ids)
@@ -813,23 +854,25 @@ class AnseriniImpactIndex(BaseAnseriniIndex):
         )
 
 
-    def search(self, query_path:str, retrieval_result_path:str, hits:int, qid2index:ID_MAPPING, tid2index:ID_MAPPING, query_token_ids:Optional[np.ndarray]=None, tmp_query_dir:Optional[str]=None, language:str="eng", verifier:Optional[BasePostVerifier]=None, **kwargs) -> RETRIEVAL_MAPPING:
+    def search(self, query_token_ids, retrieval_result_path:str, hits:int, qid2index:ID_MAPPING, tid2index:ID_MAPPING, query_token_weights:Optional[np.ndarray]=None, query_path:Optional[str]=None, tmp_query_dir:Optional[str]=None, language:str="eng", verifier:Optional[BasePostVerifier]=None, **kwargs) -> RETRIEVAL_MAPPING:
         """
         Search by Anserini.
 
         Args:
+            query_token_ids: the pretokenized query token ids
+            query_token_weights: the weights of each token
             query_path: the raw query file path
             retrieval_result_path:
             hits: Top K
             qid2index: mapping from query id to query idx; generated by :py:mod:`scripts.preprocess`
             tid2index: mapping from document id to document idx
-            query_token_ids: the pretokenized query token ids
+            query_path: the raw query file path
             tmp_query_path: the temperary file to save pretokenized query
             lanugage: {eng, zh}
             verifier: the verifier to post rank the hitted results
         """
         tmp_retrieval_result_path = f"{retrieval_result_path}.tmp"
-        split, query_path_or_dir = self.prepare_query(query_path=query_path, query_token_ids=query_token_ids, qid2index=qid2index, tmp_query_dir=tmp_query_dir)
+        split, query_path_or_dir = self.prepare_query(query_path=query_path, query_token_ids=query_token_ids, query_token_weights=query_token_weights, qid2index=qid2index, tmp_query_dir=tmp_query_dir)
 
         if split:
             retrieval_result = {}
@@ -1033,7 +1076,7 @@ class AnseriniBM25Index(BaseAnseriniIndex):
             verifier: the verifier to post rank the hitted results
         """
         tmp_retrieval_result_path = f"{retrieval_result_path}.tmp"
-        split, query_path_or_dir = self.prepare_query(query_path=query_path, query_token_ids=query_token_ids, qid2index=qid2index, tmp_query_dir=tmp_query_dir)
+        split, query_path_or_dir = self.prepare_query(query_path=query_path, query_token_ids=query_token_ids, query_token_weights=None, qid2index=qid2index, tmp_query_dir=tmp_query_dir)
 
         if split:
             retrieval_result = {}
@@ -1692,10 +1735,12 @@ def augment_xq(xq):
     return np.hstack((xq, extracol.reshape(-1, 1)))
 
 
-def build_inverted_lists(token_ids, start_text_idx, token_num, stop_token_ids):
+def build_inverted_lists(args):
     """
     Build inverted lists for :class:`utils.index.BaseInvertedIndex`.
     """
+    token_ids, start_text_idx, token_num, stop_token_ids = args
+
     text_idx_inverted_lists = [[] for _ in range(token_num)]
     token_idx_inverted_lists = [[] for _ in range(token_num)]
 
@@ -1711,14 +1756,6 @@ def build_inverted_lists(token_ids, start_text_idx, token_num, stop_token_ids):
     return text_idx_inverted_lists, token_idx_inverted_lists
 
 
-def isnumber(x):
-    try:
-        float(x)
-        return True
-    except ValueError:
-        return False
-
-
 def subword_to_word_bert(x):
     """
     Returns:
@@ -1731,7 +1768,7 @@ def subword_to_word_bert(x):
         return False, x
 
 
-def convert_tokens_to_words(tokens, subword_to_word, stop_words={}, scores=None, reduce="max"):
+def convert_tokens_to_words(tokens, subword_to_word, scores=None, reduce="max"):
     """
     transform the tokens output by tokenizer to words (connecting subwords)
     Returns:
@@ -1780,26 +1817,7 @@ def convert_tokens_to_words(tokens, subword_to_word, stop_words={}, scores=None,
     else:
         raise NotImplementedError
 
-    if len(stop_words):
-        filtered_words = []
-        filtered_scores = []
-        if r"\d" in stop_words:
-            filter_number = True
-        else:
-            filter_number = False
-
-        for i, word in enumerate(words):
-            if word in stop_words:
-                continue
-            if filter_number and isnumber(word):
-                continue
-            else:
-                filtered_words.append(word)
-                filtered_scores.append(word_scores[i])
-
-        return filtered_words, filtered_scores
-    else:
-        return words, word_scores
+    return words, word_scores
 
 
 def build_impact_collection(token_ids, token_scores, text_start_idx, output_json_path, tokenizer, subword_to_word, stop_words, reduce):
@@ -1811,21 +1829,27 @@ def build_impact_collection(token_ids, token_scores, text_start_idx, output_json
             tokens = tokenizer.convert_ids_to_tokens(token_id)
             scores = token_scores[idx]
 
-            # we do not use first mask because it's token level; however we want eliminate
-            # word-level duplication
             dic = {}
             vector = {}
             word_score_dict = defaultdict(list)
 
-            words, scores = convert_tokens_to_words(tokens, subword_to_word, stop_words=stop_words, scores=scores, reduce=reduce)
+            if subword_to_word is not None:
+                words, scores = convert_tokens_to_words(tokens, subword_to_word, scores=scores, reduce=reduce)
+            else:
+                words = tokens
 
             for word, score in zip(words, scores):
+                # only index the word with positive impact
+                if score <= 0:
+                    continue
+                if word in stop_words:
+                    continue
                 word_score_dict[word].append(score)
 
             for word, score in word_score_dict.items():
                 # use the max score of a word as its impact
                 score = max(score)
-                vector[word] = float(score)
+                vector[word] = score
 
             dic["id"] = idx + text_start_idx
             dic["contents"] = ""
@@ -1860,7 +1884,8 @@ INVERTED_INDEX_MAP = {
 
 ANSERINI_INDEX_MAP = {
     "bm25": AnseriniBM25Index,
-    "impact": AnseriniImpactIndex,
+    "impact-tok": AnseriniImpactIndex,
+    "impact-word": AnseriniImpactIndex,
 }
 
 
@@ -1874,6 +1899,7 @@ TRIE_INDEX_MAP = {
     "trie": TrieIndex,
 }
 
-SUBWORD_TO_WORD_FN = defaultdict()
-SUBWORD_TO_WORD_FN["bert"] = subword_to_word_bert
+SUBWORD_TO_WORD_FN = {
+    "bert": subword_to_word_bert,
+}
 

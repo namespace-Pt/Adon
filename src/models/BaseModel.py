@@ -51,15 +51,13 @@ class BaseModel(nn.Module):
         self.name = config.name
 
         # all the following attributes can be generated according to name
-        self.index_dir = os.path.join(config.cache_root, "index", self.name, "index")
-        self.collection_dir = os.path.join(config.cache_root, "index", self.name, "collection")
         self.retrieve_dir = os.path.join(config.cache_root, config.eval_mode, self.name, config.eval_set)
-        self.encode_dir = os.path.join(config.cache_root, "encode", self.name)
-        self.query_dir = os.path.join(self.encode_dir, config.eval_set)
+        self.retrieval_result_path = os.path.join(self.retrieve_dir, "retrieval_result.pkl")
         # refered by transformer trainer
         self.ckpt_dir = os.path.join(config.cache_root, "ckpts", self.name)
-
-        self.retrieval_result_path = os.path.join(self.retrieve_dir, "retrieval_result.pkl")
+        self.index_dir = os.path.join(config.cache_root, "index", self.name)
+        self.encode_dir = os.path.join(config.cache_root, "encode", self.name)
+        self.query_dir = os.path.join(self.encode_dir, config.eval_set)
 
         self.logger = MasterLogger(self.name)
 
@@ -407,7 +405,7 @@ class BaseModel(nn.Module):
                     dtype=np.float32
                 ).reshape(len(loader_text.dataset), -1)[start_text_idx: end_text_idx].copy()
             elif self.config.verifier_type == "pq":
-                pq_index = faiss.read_index(os.path.join(self.config.cache_root, "index", self.config.verifier_src, "index", self.config.verifier_index))
+                pq_index = faiss.read_index(os.path.join(self.config.cache_root, "index", self.config.verifier_src, "faiss", self.config.verifier_index))
 
             verifier = VERIFIER_MAP[self.config.verifier_type](
                 query_embeddings=query_embeddings,
@@ -529,10 +527,10 @@ class BaseModel(nn.Module):
             Save the model metrics and configurations in ``performance.log``.
         """
         name = self.name
-        metrics = {k:v for k, v in self.metrics.items() if k != "_best"}
+        metrics = {k: v for k, v in self.metrics.items() if k != "_best"}
 
         with open("performance.log", "a+") as f:
-            d = vars(self.config)
+            d = self.config
             line = "{} : {}\n{}\n".format(name, str(d), str(metrics))
             f.write(line)
 
@@ -588,7 +586,6 @@ class BaseModel(nn.Module):
             self.train()
 
 
-    @synchronize
     def load(self):
         """
         Load the model with current config from ``config.load_ckpt``.
@@ -628,7 +625,7 @@ class BaseModel(nn.Module):
 
 
     @classmethod
-    def from_pretrained(cls, ckpt_path:str, device:DEVICE="cpu"):
+    def from_pretrained(cls, ckpt_path:str, **kwargs):
         """
         Load model and its config from ``ckpt_path``.
 
@@ -640,16 +637,19 @@ class BaseModel(nn.Module):
         Returns:
             the loaded model
         """
-        model_name_current = ckpt_path.split(os.sep)[-2]
-        state_dict = torch.load(ckpt_path, map_location=torch.device(device))
-        config = state_dict["config"]
-        model_name_ckpt = config.name
-        assert model_name_ckpt == model_name_current, f"The model in the checkpoint is {model_name_ckpt}, while it's {model_name_current} in the current setting!"
+        state_dict = torch.load(ckpt_path, map_location="cpu")
+        config = Config(**state_dict["config"])
 
-        # transfer the model to a specific device
-        config.device = device
+        model_name_current = ckpt_path.split(os.sep)[-2]
+        model_name_ckpt = config.name
+        if model_name_ckpt != model_name_current:
+            model.logger.warning(f"model name in the checkpoint is {model_name_ckpt}, while it's {model_name_current} now!")
+
+        # override model name
+        config.update(**kwargs, name=model_name_current)
+
         model = cls(config).to(config.device)
-        assert model.name == config.name
+
         model.logger.info(f"loading model from {ckpt_path} with checkpoint config...")
         model.load_state_dict(state_dict["model"])
         model.metrics = state_dict["metrics"]
@@ -711,6 +711,8 @@ class BaseSparseModel(BaseModel):
     """
     def __init__(self, config:Config):
         super().__init__(config)
+        self.collection_dir = os.path.join(self.index_dir, config.index_type, "collection")
+        self.index_dir = os.path.join(self.index_dir, config.index_type, "index")
 
         # add the following sparse-model-specific attributes to the config
         # set to true to rebuild the inverted index every time
@@ -757,7 +759,7 @@ class BaseSparseModel(BaseModel):
         """
         if k is None:
             k = self.config.query_gate_k
-        if k > 0:
+        if k > 0 and k < query_token_ids.shape[-1]:
             self.logger.info(f"gating query by {k}...")
             assert query_embeddings.shape[-1] == 1
             query_embeddings = query_embeddings.squeeze(-1)
@@ -778,7 +780,7 @@ class BaseSparseModel(BaseModel):
         """
         if k is None:
             k = self.config.text_gate_k
-        if k > 0:
+        if k > 0 and k < text_embeddings.shape[1]:
             self.logger.info(f"gating text by {k}...")
             assert text_embeddings.shape[-1] == 1
             text_embeddings = text_embeddings.squeeze(-1)
@@ -1018,7 +1020,7 @@ class BaseSparseModel(BaseModel):
             rebuild_index=self._rebuild_index,
             load_index=self.config.load_index,
             save_index=self.config.save_index,
-            threads=self.config.get("index_thread", 16) // self.config.world_size
+            threads=self.config.get("index_thread", 32) // self.config.world_size
         )
 
         if self.config.eval_flops:
@@ -1035,34 +1037,22 @@ class BaseSparseModel(BaseModel):
         """
         Construct :class:`utils.index.BaseAnseriniIndex`.
         """
-        if self.config.index_type == "impact":
+        if self.config.index_type[:6] == "impact":
             if self.config.is_distributed:
                 assert self.config.save_encode
 
-        # compute embeddings
         encode_output = self.encode_text(loader_text)
 
         if self.config.is_main_proc:
-            if self.config.index_type == "impact" and self.config.is_distributed:
+            if self.config.index_type[:6] == "impact" and self.config.is_distributed:
                 # load cache only on the master node
                 encode_output = self.encode_text(loader_text, load_all_encode=True)
 
             text_token_ids = encode_output.token_ids
-            text_token_weights = encode_output.embeddings
+            text_token_weights = encode_output.embeddings.squeeze(-1) if encode_output.embeddings is not None else None
 
-            stop_words = set()
             # include plm special tokens
-            stop_words = stop_words | set(x[0] for x in self.config.special_token_ids.values() if x[0] is not None)
-
-            if self.config.index_type == "impact":
-                punctuations = set([x for x in ";:'\\\"`~[]<>()\{\}/|?!@$#%^&*…-_=+,."])
-                nltk_stop_words = set(["a", "about", "also", "am", "to", "an", "and", "another", "any", "anyone", "are", "aren't", "as", "at", "be", "been", "being", "but", "by", "despite", "did", "didn't", "do", "does", "doesn't", "doing", "done", "don't", "each", "etc", "every", "everyone", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't", "having", "he", "he'd", "he'll", "her", "here", "here's", "hers", "herself", "he's", "him", "himself", "his", "however", "i", "i'd", "if", "i'll", "i'm", "in", "into", "is", "isn't", "it", "its", "it's", "itself", "i've", "just", "let's", "like", "lot", "may", "me", "might", "mightn't", "my", "myself", "no", "nor", "not", "of", "on", "onto", "or", "other", "ought", "oughtn't", "our", "ours", "ourselves", "out", "over", "shall", "shan't", "she", "she'd", "she'll", "she's", "since", "so", "some", "something", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "tht", "to", "too", "usually", "very", "via", "was", "wasn't", "we", "we'd", "well", "we'll", "were", "we're", "weren't", "we've", "will", "with", "without", "won't", "would", "wouldn't", "yes", "yet", "you", "you'd", "you'll", "your", "you're", "yours", "yourself", "yourselves", "you've"])
-                # include punctuations
-                stop_words = stop_words | punctuations
-                # include nltk stop words
-                stop_words = stop_words | nltk_stop_words
-                # include numbers in stopwords
-                stop_words.add(r"\d")
+            stop_words = set(x[0] for x in self.config.special_token_ids.values() if x[0] is not None)
 
             collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
 
@@ -1084,25 +1074,37 @@ class BaseSparseModel(BaseModel):
             else:
                 enable_build_index = True
 
+            if self.config.index_type == "impact-word":
+                subword_to_word = SUBWORD_TO_WORD_FN[self.config.plm_tokenizer]
+            else:
+                subword_to_word = None
+
             index.fit(
                 text_cols=self.config.text_col,
                 text_token_ids=text_token_ids,
-                text_token_weights=text_token_weights.squeeze(-1) if text_token_weights is not None else None,
-                quantize_bits=self.config.quantize_bits,
+                text_token_weights=text_token_weights,
+                quantize_bit=self.config.quantize_bit,
                 tokenizer=AutoTokenizer.from_pretrained(self.config.plm_dir),
-                subword_to_word=SUBWORD_TO_WORD_FN.get(self.config.plm_tokenizer),
                 stop_words=stop_words,
-                reduce=self.config.word_reduce,
                 thread_num=self.config.index_thread,
                 enable_build_collection=enable_build_collection,
                 enable_build_index=enable_build_index,
-                language=self.config.get("language")
+                language=self.config.get("language"),
+                subword_to_word=subword_to_word,
+                reduce=self.config.get("reduce"),
             )
 
         else:
             index = None
 
-        return BaseOutput(index=index)
+        if self.config.eval_flops:
+            return BaseOutput(
+                token_ids=encode_output.token_ids,
+                embeddings=encode_output.embeddings,
+                index=index
+            )
+        else:
+            return BaseOutput(index=index)
 
 
     @synchronize
@@ -1156,15 +1158,16 @@ class BaseSparseModel(BaseModel):
                 t1 = time.time()
                 retrieval_result = index.search(
                     query_token_ids=query_token_ids,
+                    query_token_weights=query_embeddings.squeeze(-1) if query_embeddings is not None else None,
                     query_path=query_path,
-                    tmp_query_dir=os.path.join(self.config.cache_root, "index", self.name, "query"),
+                    tmp_query_dir=Path(self.index_dir).parent / "query",
                     retrieval_result_path=self.retrieval_result_path,
                     hits=self.config.hits,
                     qid2index=qid2index,
                     tid2index=tid2index,
                     language=self.config.language,
-                    k1=self.config.k1,
-                    b=self.config.b,
+                    k1=self.config.get("k1"),
+                    b=self.config.get("b"),
                     verifier=verifier
                 )
 
@@ -1204,14 +1207,6 @@ class BaseSparseModel(BaseModel):
 
         else:
             raise NotImplementedError
-
-        if self.config.eval_efficiency and self.config.is_main_proc:
-            time_consumption = round(t2-t1, 2)
-            memory_consumption = round(psutil.Process().memory_info().rss / 1e6)
-            self.metrics["Time"] = time_consumption
-            self.metrics["Memory"] = memory_consumption
-            self.logger.info(f"Total Search Time is {time_consumption} seconds!")
-            self.logger.info(f"Memory Usage of Curren Process is {memory_consumption} MB!")
 
         if self.config.eval_flops:
             self.compute_flops(loaders, output.token_ids, output.embeddings, query_token_ids, query_embeddings, log=False)
@@ -1348,10 +1343,21 @@ class BaseSparseModel(BaseModel):
             else:
                 from utils.util import _get_token_code_for_misaligned_tokenizer
 
+                stop_words = set()
+                punctuations = set([x for x in ";:'\\\"`~[]<>()\{\}/|?!@$#%^&*…-_=+,."])
+                nltk_stop_words = set(["a", "about", "also", "am", "to", "an", "and", "another", "any", "anyone", "are", "aren't", "as", "at", "be", "been", "being", "but", "by", "despite", "did", "didn't", "do", "does", "doesn't", "doing", "done", "don't", "each", "etc", "every", "everyone", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't", "having", "he", "he'd", "he'll", "her", "here", "here's", "hers", "herself", "he's", "him", "himself", "his", "however", "i", "i'd", "if", "i'll", "i'm", "in", "into", "is", "isn't", "it", "its", "it's", "itself", "i've", "just", "let's", "like", "lot", "may", "me", "might", "mightn't", "my", "myself", "no", "nor", "not", "of", "on", "onto", "or", "other", "ought", "oughtn't", "our", "ours", "ourselves", "out", "over", "shall", "shan't", "she", "she'd", "she'll", "she's", "since", "so", "some", "something", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "tht", "to", "too", "usually", "very", "via", "was", "wasn't", "we", "we'd", "well", "we'll", "were", "we're", "weren't", "we've", "will", "with", "without", "won't", "would", "wouldn't", "yes", "yet", "you", "you'd", "you'll", "your", "you're", "yours", "yourself", "yourselves", "you've"])
+                # include punctuations
+                stop_words = stop_words | punctuations
+                # include nltk stop words
+                stop_words = stop_words | nltk_stop_words
+                # include numbers in stopwords
+                stop_words.add(r"\d")
+
                 thread_num = 0
-                for path in os.listdir(self.collection_dir):
+                collection_dir = os.path.join(self.config.cache_root, "index", self.name, "impact-word", "collection")
+                for path in os.listdir(collection_dir):
                     # check if current path is a file
-                    if os.path.isfile(os.path.join(self.collection_dir, path)):
+                    if os.path.isfile(os.path.join(collection_dir, path)):
                         thread_num += 1
 
                 # each thread creates one jsonl file
@@ -1360,7 +1366,7 @@ class BaseSparseModel(BaseModel):
                 arguments = []
                 # re-tokenize words in the collection folder
                 for i in range(thread_num):
-                    input_path = os.path.join(self.collection_dir, "docs{:02d}.json".format(i))
+                    input_path = os.path.join(collection_dir, "docs{:02d}.json".format(i))
                     start_idx = round(text_num_per_thread * i)
                     end_idx = round(text_num_per_thread * (i+1))
 
@@ -1373,6 +1379,7 @@ class BaseSparseModel(BaseModel):
                         tokenizer,
                         self.config.code_length,
                         code_order,
+                        stop_words,
                     ))
 
                 # the collection has no special_tokens so we don't need to filter them out
@@ -1387,6 +1394,8 @@ class BaseDenseModel(BaseModel):
     """
     def __init__(self, config):
         super().__init__(config)
+        # TODO: other ANN libraries
+        self.index_dir = os.path.join(self.index_dir, "faiss")
 
 
     def encode_text_step(self, x):
@@ -1602,14 +1611,6 @@ class BaseDenseModel(BaseModel):
             t2 = time.time()
             # manually delete the index
             del index
-
-            if self.config.eval_efficiency and self.config.is_main_proc:
-                time_consumption = round(t2-t1, 2)
-                memory_consumption = round(psutil.Process().memory_info().rss / 1e6)
-                self.metrics["Time"] = time_consumption
-                self.metrics["Memory"] = memory_consumption
-                self.logger.info(f"Total Search Time is {time_consumption} seconds!")
-                self.logger.info(f"Memory Usage of Curren Process is {memory_consumption} MB!")
 
             if self.config.eval_posting_length and posting_list_length:
                 # ANN index does not support parallel

@@ -1,0 +1,48 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: NQ
+  - model: ranker
+  - index: trie
+  - train: neg
+  - eval: rerank
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  plm: t5
+
+model:
+  model_type: sequer
+  # force all token score's order?
+  ranking_token: all
+  # in reranking evaluation with beams, which token score to use
+  beam_ranking: none
+  # beam size
+  nbeam: 100
+  # length penalty in generic beam scoring
+  length_penalty: 0
+  # in retrieve mode, limit the corpus to the candidates' subtree
+  retrieve_candidate: false
+  # how to restore missing branches
+  restore: none
+
+  # save/load the intermidiate token scores in beam ranking?
+  save_beam: false
+  load_beam: false
+
+  return_code: true
+  code_type: UniCOIL-weight
+  code_tokenizer: t5
+  code_length: 34
+  return_prefix_mask: true
+
+train:
+  batch_size: 12
+  learning_rate: 3e-5
+  hard_neg_type: DPR_hn
+  hard_neg_num: 49
+
+eval:
+  candidate_type: DPR_hn
+  parallel: query

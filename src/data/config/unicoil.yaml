@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: inv
+  - index: invvec
   - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
@@ -16,13 +16,9 @@ model:
   model_type: unicoil
   return_sep_mask: True
 
-index:
-  index_type: invvec
-
 train:
   hard_neg_num: 7
 
 eval:
-  eval_efficiency: True
   eval_posting_length: True
   eval_flops: True

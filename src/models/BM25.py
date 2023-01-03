@@ -7,7 +7,7 @@ from collections import defaultdict
 from .BaseModel import BaseSparseModel
 from transformers import AutoTokenizer
 from utils.typings import *
-from utils.util import BaseOutput
+from utils.util import BaseOutput, synchronize
 
 
 
@@ -17,16 +17,15 @@ class BM25(BaseSparseModel):
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
 
         if self.config.pretokenize:
-            self.collection_dir = os.path.join(self.collection_dir, "pretokenize")
-            self.index_dir = os.path.join(self.index_dir, "pretokenize")
+            self.index_dir = os.path.join(config.cache_root, "index", self.name, "pretokenize", "index")
+            self.collection_dir = os.path.join(config.cache_root, "index", self.name, "pretokenize", "collection")
         elif self.config.get("return_code"):
-            self.collection_dir = os.path.join(self.collection_dir, self.config.code_type)
-            self.index_dir = os.path.join(self.index_dir, self.config.code_type)
+            self.index_dir = os.path.join(config.cache_root, "index", self.name, config.code_type, "index")
+            self.collection_dir = os.path.join(config.cache_root, "index", self.name, config.code_type, "collection")
 
 
     def encode_text(self, loader_text: DataLoader, load_all_encode: bool = False):
         if self.config.pretokenize:
-            self._synchronize()
             text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
 
             if load_all_encode:
@@ -94,7 +93,6 @@ class BM25(BaseSparseModel):
             return BaseOutput(embeddings=text_embeddings, token_ids=text_token_ids)
 
         elif self.config.get("return_code"):
-            self._synchronize()
             text_codes = loader_text.dataset.text_codes[loader_text.sampler.start: loader_text.sampler.end].copy()
             return BaseOutput(token_ids=text_codes)
 

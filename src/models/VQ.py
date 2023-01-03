@@ -23,7 +23,7 @@ class DistillVQ(BaseDenseModel):
 
         super().__init__(config)
 
-        index = faiss.read_index(os.path.join(config.cache_root, "index", config.embedding_src, "index", config.index_type))
+        index = faiss.read_index(os.path.join(config.cache_root, "index", config.embedding_src, "faiss", config.index_type))
         if isinstance(index, faiss.IndexPreTransform):
             vt = faiss.downcast_VectorTransform(index.chain.at(0))
             opq = faiss.vector_to_array(vt.A).reshape(vt.d_out, vt.d_in).T
@@ -347,7 +347,7 @@ class DistillVQ(BaseDenseModel):
                 device=self.config.device,
                 save_dir=self.index_dir,
             )
-            index.load(os.path.join(self.config.cache_root, "index", self.config.embedding_src, "index", self.config.index_type))
+            index.load(os.path.join(self.config.cache_root, "index", self.config.embedding_src, "faiss", self.config.index_type))
 
             # load opq transformation
             if isinstance(index.index, faiss.IndexPreTransform):

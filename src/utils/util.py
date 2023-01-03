@@ -33,11 +33,11 @@ def save_pickle(obj, path:str):
         return pickle.dump(obj, f)
 
 
-def load_from_previous(model:torch.nn.Module, path:str, device:Union[int,str]):
+def load_from_previous(model:torch.nn.Module, path:str):
     """
     Load checkpoint from the older version of Uni-Retriever, only load model parameters and overrides the config by the current config.
     """
-    ckpt = torch.load(path, map_location=torch.device(device))
+    ckpt = torch.load(path, map_location=torch.device("cpu"))
     state_dict = ckpt["model"]
     try:
         metrics = ckpt["metrics"]
@@ -451,7 +451,15 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
         pbar.close()
 
 
-def _get_token_code_for_misaligned_tokenizer(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, order:str):
+def isnumber(x):
+    try:
+        float(x)
+        return True
+    except ValueError:
+        return False
+
+
+def _get_token_code_for_misaligned_tokenizer(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, order:str, stop_words:set):
     """
     Generate code based on json files produced by :func:`models.BaseModel.BaseModel.anserini_index`.
     First reorder the words by ``order``, and tokenize the word sequence by ``tokenizer``.
@@ -466,6 +474,7 @@ def _get_token_code_for_misaligned_tokenizer(input_path:str, output_path:str, al
         tokenizer(transformers.AutoTokenizer)
         max_length: the maximum length of tokens
         order: the word order {weight, lexical, orginal}
+        stop_words: some words to exclude
     """
     codes = np.memmap(
         output_path,
@@ -485,6 +494,22 @@ def _get_token_code_for_misaligned_tokenizer(input_path:str, output_path:str, al
             assert start_idx <= idx < end_idx
 
             word_score_pairs = doc["vector"]
+
+            if len(stop_words):
+                filtered_word_score_pairs = {}
+                if r"\d" in stop_words:
+                    filter_number = True
+                else:
+                    filter_number = False
+
+                for word, score in word_score_pairs.items():
+                    if word in stop_words:
+                        continue
+                    if filter_number and isnumber(word):
+                        continue
+                    else:
+                        filtered_word_score_pairs[word] = score
+                word_score_pairs = filtered_word_score_pairs
 
             if order == "weight":
                 sorted_word = [word for word, score in sorted(word_score_pairs.items(), key=lambda x: x[1], reverse=True)[:k]]
@@ -758,18 +783,6 @@ class Cluster():
 
 
 
-@dataclass
-class BaseOutput:
-    """
-    Basic output for :class:`models.BaseModel.BaseModel`
-    """
-    token_ids: np.ndarray = None
-    embeddings: np.ndarray = None
-    codes: np.ndarray = None
-    index: Any = None
-
-
-
 class MasterLogger():
     """
     The logger only outputs on the master node.
@@ -803,40 +816,42 @@ class MasterLogger():
             pass
 
 
-class Config:
+
+class DotDict(dict):
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    # essential to make pickle saving and loading work
+    def __getstate__(self): return self.__dict__
+    def __setstate__(self, d): self.__dict__.update(d)
+
+
+
+class Config(DotDict):
     """
-    Config object. A dot access dictionary, supports ``items()`` and ``get()`` like dictionary.
+    Config object. A dot access OrderedDict.
     """
-    def __init__(self, **kargs) -> None:
+    def __init__(self, *args, **kwargs):
         """
-        intialize self with kwargs
+        Launch distributed necessary parameters.
         """
-        for k, v in kargs.items():
-            setattr(self, k, v)
+        super().__init__(*args, **kwargs)
         self.setup_distributed()
 
     def __repr__(self) -> str:
-        return str({k: v for k, v in self.__dict__.items() if k[0] != "_"})
-
-    def __getitem__(self, k):
-        return self.__dict__[k]
-
-    def get(self, k, *args, **kargs):
-        return self.__dict__.get(k, *args, **kargs)
-
-    def keys(self):
-        return self.__dict__.keys()
-
-    def values(self):
-        return self.__dict__.values()
+        # skip hidden attributes
+        return str({k: v for k, v in super().items() if k[:9] != "_Config__"})
 
     def items(self):
-        return self.__dict__.items()
+        # skip hidden attributes
+        return [(k, v) for k, v in super().items() if k[:9] != "_Config__"]
 
     def setup_distributed(self):
         """
         Set up distributed nccl backend.
         """
+        # set to hidden attributes
         self.__local_world_size = int(os.environ.get("LOCAL_WORLD_SIZE", 1))
         self.__local_rank = int(os.environ.get("LOCAL_RANK", 0))
         self.__global_world_size = int(os.environ.get("WORLD_SIZE", 1))
@@ -877,3 +892,15 @@ class Config:
     @property
     def is_distributed(self):
         return self.world_size > 1
+
+
+
+@dataclass
+class BaseOutput:
+    """
+    Basic output for :class:`models.BaseModel.BaseModel`
+    """
+    token_ids: np.ndarray = None
+    embeddings: np.ndarray = None
+    codes: np.ndarray = None
+    index: Any = None

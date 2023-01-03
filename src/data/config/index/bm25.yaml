@@ -5,9 +5,7 @@ defaults:
 index_type: bm25
 
 load_collection: False
-quantize_bits: 8
 language: eng
-word_reduce: max
 
 # k1 and b used in bm25
 k1: 0.82

@@ -66,9 +66,9 @@ def main(manager:Manager):
 
     elif manager.config.mode == "migrate":
         from utils.util import load_from_previous
-        path = f"{manager.config.cache_root}/ckpts/{model.name}/{manager.config.load_ckpt}"
-        load_from_previous(model, path, manager.config.device)
-        if manager._rank == 0:
+        if manager.config.is_main_proc:
+            path = f"{manager.config.cache_root}/ckpts/{model.name}/{manager.config.load_ckpt}"
+            load_from_previous(model, path)
             model.save()
 
     elif manager.config.mode == "deploy":
@@ -78,10 +78,6 @@ def main(manager:Manager):
     elif manager.config.mode == "index":
         model.load()
         model.index(loaders)
-
-    elif manager.config.mode == "save":
-        model.load()
-        model.save()
 
     else:
         raise ValueError(f"Invalid mode {manager.config.mode}!")

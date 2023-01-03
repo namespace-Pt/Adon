@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: inv
+  - index: invhit
   - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
@@ -28,9 +28,6 @@ model:
   train_encoder: false
 
   save_encode: true
-
-index:
-  index_type: invhit
 
 train:
   # scale the ivf loss to pq loss?

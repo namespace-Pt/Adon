@@ -8,7 +8,6 @@ eval_metric_cutoff: [10, 100, 1000]
 # the cutoff for retrieval result
 hits: 1000
 
-eval_efficiency: False
 eval_flops: False
 eval_posting_length: False
 

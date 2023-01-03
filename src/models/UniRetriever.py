@@ -23,7 +23,7 @@ class UniRetriever(BaseModel):
 
         if config.y_model != "none":
             YModel = AM.from_pretrained(os.path.join(config.cache_root, "ckpts", config.y_model, config.y_load_ckpt), device=config.get("y_device", config.device))
-            for k,v in vars(config).items():
+            for k,v in config.items():
                 if k.startswith("y_") and k != "y_model":
                     setattr(YModel.config, k[2:], v)
             YModel.config.verifier_type = config.verifier_type

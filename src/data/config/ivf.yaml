@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: inv
+  - index: invhit
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
   - _self_
@@ -25,9 +25,6 @@ model:
   save_encode: true
 
   load_ckpt: none
-
-index:
-  index_type: invhit
 
 eval:
   hits: 0

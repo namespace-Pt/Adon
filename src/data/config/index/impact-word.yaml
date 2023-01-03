@@ -1,0 +1,13 @@
+defaults:
+  - _default
+  - _self_
+
+index_type: impact-word
+
+load_collection: False
+quantize_bit: 16
+language: eng
+
+reduce: max
+
+index_thread: 32

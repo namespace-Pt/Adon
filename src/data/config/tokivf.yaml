@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: inv
+  - index: invhit
   - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
@@ -19,16 +19,12 @@ model:
   # how many token postings to scan
   text_gate_k: 5
 
-index:
-  index_type: invhit
-
 train:
   hard_neg_num: 7
   objective: kd
   distill_src: RetroMAE
 
 eval:
-  eval_efficiency: true
   eval_posting_length: true
 
   verifier_type: pq

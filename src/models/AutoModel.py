@@ -1,5 +1,6 @@
 import os
 import torch
+from utils.util import Config
 from .BaseModel import BaseModel
 
 from .AR2 import AR2
@@ -12,11 +13,13 @@ from .DPR import DPR
 from .IVF import IVF, TopIVF, TokIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
-from .Ranker import CrossEncoder, Seq2SeqRanker
+from .Sequer import Sequer
+from .Ranker import CrossEncoder
 from .UniRetriever import UniRetriever
 from .VQ import DistillVQ
 
 MODEL_MAP = {
+    "ar2": AR2,
     "bm25": BM25,
     "coil": COIL,
     "colbert": ColBERT,
@@ -26,6 +29,8 @@ MODEL_MAP = {
     "dpr": DPR,
     "dsi": DSI,
     "ivf": IVF,
+    "seq2seq": Sequer,
+    "sequer": Sequer,
     "sparta": SPARTA,
     "spladev2": SPLADEv2,
     "topivf": TopIVF,
@@ -37,18 +42,18 @@ MODEL_MAP = {
 
 class AutoModel(BaseModel):
     @classmethod
-    def from_pretrained(cls, ckpt_path, device="cpu"):
-        state_dict = torch.load(ckpt_path, map_location=torch.device(device))
-        config = state_dict["config"]
+    def from_pretrained(cls, ckpt_path, **kwargs):
+        state_dict = torch.load(ckpt_path, map_location="cpu")
+        # re-initialize the config so the distributed information is properly set
+        config = Config(**state_dict["config"])
 
         model_name_current = os.path.abspath(ckpt_path).split(os.sep)[-2]
         model_name_ckpt = config.name
 
         # override model name
-        config.name = model_name_current
+        config.update(**kwargs, name=model_name_current)
 
         model_type = model_name_current.split("_")[0].lower()
-        config.device = device
 
         try:
             model = MODEL_MAP[model_type](config).to(config.device)

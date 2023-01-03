@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: anserini
+  - index: bm25
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
   - _self_
@@ -16,6 +16,4 @@ model:
   model_type: bm25
 
 index:
-  index_type: bm25
-  eval_efficiency: true
   pretokenize: false

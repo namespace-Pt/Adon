@@ -723,9 +723,12 @@ class BaseSparseModel(BaseModel):
         self._output_dim = 1
         # posting list number, may be extended for latent topics
         self._posting_entry_num = self.config.vocab_size
+        # is bow or seq
+        self._is_bow = True
         # valid text length for indexing and searching
         self._text_length = self.config.text_length
         self._query_length = self.config.query_length
+
 
 
     def _compute_overlap(self, query_token_id:TENSOR, text_token_id:TENSOR, cross_batch=True) -> TENSOR:
@@ -987,30 +990,21 @@ class BaseSparseModel(BaseModel):
         text_token_ids = encode_output.token_ids
         text_embeddings_tensor = torch.as_tensor(text_embeddings, device=self.config.device)
 
+        # each process save/load its own shards
         if not self._rebuild_index:
-            dir_names = [str(self._text_length)]
-            if self.config.get("expand_title") and self.config.dataset == "MSMARCO-passage":
-                dir_names.append("title")
-            # if self.config.expand_doct5:
-            #     dir_names.append("expand")
-            save_dir = os.path.join(self.config.cache_root, "index", "InvList", self.config.plm_tokenizer, "_".join(dir_names), str(self.config.world_size))
+            save_dir = os.path.join(self.config.cache_root, "index", "InvList", "BOW" if self._is_bow else "ORG", self.config.plm_tokenizer, "_".join([str(self._text_length), ",".join([str(x) for x in self.config.text_col])]), str(self.config.world_size))
         else:
             save_dir = os.path.join(self.index_dir, str(self.config.world_size))
 
         special_token_ids = set()
         if self._skip_special_tokens:
-            # add all the special_token_ids
             special_token_ids.update([x[1] for x in self.config.special_token_ids.values() if x[0] is not None])
-        # add stop tokens
-        # special_token_ids.update(self.stop_token_ids)
 
         index = INVERTED_INDEX_MAP[self.config.index_type](
             text_num=text_embeddings_tensor.shape[0],
             token_num=self._posting_entry_num,
-            # in composited models e.g. UniRetriever, it is possible that the config has no posting_prune key
-            posting_prune=self.config.get("posting_prune", 0),
-            start_text_idx=loader_text.sampler.start,
             device=self.config.device,
+            rank=self.config.rank,
             save_dir=save_dir,
             special_token_ids=special_token_ids
         )
@@ -1020,7 +1014,10 @@ class BaseSparseModel(BaseModel):
             rebuild_index=self._rebuild_index,
             load_index=self.config.load_index,
             save_index=self.config.save_index,
-            threads=self.config.get("index_thread", 32) // self.config.world_size
+            threads=self.config.get("index_thread", 32) // self.config.world_size,
+            workers=16 // self.config.world_size,
+            posting_prune=self.config.get("posting_prune", 0),
+            start_text_idx=loader_text.sampler.start,
         )
 
         if self.config.eval_flops:
@@ -1548,7 +1545,6 @@ class BaseDenseModel(BaseModel):
                 start_text_idx=loader_text.sampler.start,
                 device=self.config.device,
                 save_dir=self.index_dir,
-                by_residual=self.config.get("by_residual", True)
             )
             if self.config.load_index:
                 index.load()
@@ -1925,8 +1921,8 @@ class BaseGenerativeModel(BaseModel):
                 res = defaultdict(list)
                 for k, c in enumerate(batch_code):
                     # sometimes the generated code may stop at early steps, just do padding otherwise the leaf cannot be found
-                    if len(c) < self.config.code_size:
-                        c = c.tolist() + [0] * (self.config.code_size - len(c))
+                    if len(c) < self.config.code_length:
+                        c = c.tolist() + [0] * (self.config.code_length - len(c))
                     ids = trie[c]
                     for id in ids:
                         res[id].append(scores[j, k])
@@ -1970,9 +1966,6 @@ class BaseGenerativeModel(BaseModel):
         text_codes = encode_output.codes
 
         self.logger.info(f"reranking...")
-
-        # in case the query is parallel
-        query_start_idx = loader_query.sampler.start
 
         if os.path.exists(self.config.candidate_type):
             candidate_path = self.config.candidate_type
@@ -2027,8 +2020,8 @@ class BaseGenerativeModel(BaseModel):
             res = defaultdict(list)
             for k, c in enumerate(codes):
                 # sometimes the generated code may stop at early steps, just do padding otherwise the leaf cannot be found
-                if len(c) < self.config.code_size:
-                    c = c.tolist() + [0] * (self.config.code_size - len(c))
+                if len(c) < self.config.code_length:
+                    c = c.tolist() + [0] * (self.config.code_length - len(c))
                 ids = trie[c]
                 for id in ids:
                     res[id].append(scores[k])

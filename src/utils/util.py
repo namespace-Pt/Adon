@@ -872,9 +872,10 @@ class Config(DotDict):
 
             # manager.device will be invoked in the model
             # set the device to the local rank because we may use multi-node distribution
-            self.device = self.__local_rank
-            # essential to make all_gather_object work properly
-            torch.cuda.set_device(self.device)
+            if self.device != "cpu":
+                self.device = self.__local_rank
+                # essential to make all_gather_object work properly
+                torch.cuda.set_device(self.device)
 
     @property
     def rank(self):

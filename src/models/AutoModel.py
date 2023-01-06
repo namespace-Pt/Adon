@@ -4,7 +4,7 @@ from utils.util import Config
 from .BaseModel import BaseModel
 
 from .BM25 import BM25
-from .COIL import COIL, UniCOIL
+from .COIL import COIL
 from .ColBERT import ColBERT
 from .DSI import DSI
 from .DeepImpact import DeepImpact
@@ -13,6 +13,7 @@ from .IVF import IVF, TopIVF, TokIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
 from .Ranker import CrossEncoder
+from .UniCOIL import UniCOIL
 from .UniRetriever import UniRetriever
 from .VQ import DistillVQ
 

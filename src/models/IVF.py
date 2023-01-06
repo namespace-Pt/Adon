@@ -8,9 +8,9 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoModel
 from .BaseModel import BaseSparseModel
-from .COIL import UniCOIL
+from .UniCOIL import UniCOIL
 from utils.util import BaseOutput, synchronize
-from utils.index import FaissIndex, VERIFIER_MAP, merge_retrieval_result, pq_quantize
+from utils.index import FaissIndex, pq_quantize
 from utils.typings import *
 
 

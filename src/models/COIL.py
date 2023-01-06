@@ -18,6 +18,7 @@ class COIL(BaseSparseModel):
         self.tokenProject = nn.Linear(self.plm.config.hidden_size, config.token_dim)
 
         self._output_dim = config.token_dim
+        self._is_bow = False
 
 
     def _encode_text(self, **kwargs):
@@ -109,17 +110,3 @@ class COIL(BaseSparseModel):
         score = query_text_score.sum(dim=1)
         return score
 
-
-
-class UniCOIL(COIL):
-    def __init__(self, config):
-        config.token_dim = 1
-        super().__init__(config)
-
-        plm_dim = self.plm.config.hidden_size
-        self.tokenProject = nn.Sequential(
-            nn.Linear(plm_dim, plm_dim),
-            nn.ReLU(),
-            nn.Linear(plm_dim, self._output_dim),
-            nn.ReLU()
-        )

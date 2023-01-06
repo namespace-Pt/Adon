@@ -1,6 +1,6 @@
 import os
 import torch
-from collections import OrderedDict
+import numpy as np
 from transformers import T5ForConditionalGeneration
 from .BaseModel import BaseGenerativeModel
 
@@ -12,6 +12,11 @@ class DSI(BaseGenerativeModel):
         self.plm = T5ForConditionalGeneration.from_pretrained(config.plm_dir)
         if config.code_size > 0:
             self.plm.resize_token_embeddings(config.vocab_size + config.code_size)
+
+        if config.code_type == "UniCOIL-weight-align":
+            self.logger.info("initializing new tokens embeddings...")
+            new_token_embeds = np.load(os.path.join(config.cache_root, "codes", "UniCOIL-weight-align", config.code_tokenizer, str(config.code_length), "new_token_embeds.npy"))
+            self.plm.encoder.embed_tokens.weight.data[-config.code_size:] = torch.tensor(new_token_embeds)
 
 
     def forward(self, x):

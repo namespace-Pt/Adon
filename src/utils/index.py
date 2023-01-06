@@ -16,6 +16,8 @@ from collections import defaultdict
 from .util import save_pickle, load_pickle, MasterLogger, makedirs, isempty, synchronize
 from .typings import *
 
+import concurrent.futures as ft
+
 
 
 class BaseIndex(object):
@@ -64,15 +66,6 @@ class FaissIndex():
         elif metric in ["ip", "cos"]:
             metric = faiss.METRIC_INNER_PRODUCT
         index = faiss.index_factory(d, index_type, metric)
-
-        if kwargs.get("by_residual", True) == False:
-            assert "IVF" in index_type
-            if isinstance(index, faiss.IndexPreTransform):
-                ivf_index = faiss.downcast_index(index.index)
-            else:
-                ivf_index = index
-            ivf_index.by_residual = False
-            self.name += "_no_res"
 
         self.index = index
         self.onGPU = False
@@ -249,7 +242,7 @@ class BaseInvertedIndex(BaseIndex):
     """
     Base class of the Inverted Indexes
     """
-    def __init__(self, text_num:int, token_num:int, posting_prune:float, start_text_idx:int, device:DEVICE, save_dir:str, special_token_ids:Optional[set]=None):
+    def __init__(self, text_num:int, token_num:int, device:DEVICE, rank:int, save_dir:str, special_token_ids:Optional[set]=None):
         """
         Args:
             text_num: the number of documents
@@ -263,27 +256,20 @@ class BaseInvertedIndex(BaseIndex):
         super().__init__()
         self.text_num = text_num
         self.token_num = token_num
-        self.start_text_idx = start_text_idx
         self.device = torch.device(device)
+        self.rank = rank
         self.save_dir = save_dir
-        self.posting_prune = posting_prune
 
         if special_token_ids is not None:
             self.special_token_ids = special_token_ids
         else:
             self.special_token_ids = set()
 
-        if os.path.split(save_dir)[-1] == "1":
-            # when world_size == 1, we can always load the same inverted lists
-            self.text_idx_inverted_lists_path = os.path.join(save_dir, f"text_idx_inverted_lists.pt")
-            self.token_idx_inverted_lists_path = os.path.join(save_dir, f"token_idx_inverted_lists.pt")
-        else:
-            self.text_idx_inverted_lists_path = os.path.join(save_dir, f"text_idx_inverted_lists_{self.device.index}.pt")
-            self.token_idx_inverted_lists_path = os.path.join(save_dir, f"token_idx_inverted_lists_{self.device.index}.pt")
+        self.text_idx_inverted_lists_path = os.path.join(save_dir, f"text_idx_inverted_lists_{self.rank}.pt")
+        self.token_idx_inverted_lists_path = os.path.join(save_dir, f"token_idx_inverted_lists_{self.rank}.pt")
 
 
-    @synchronize
-    def fit(self, text_token_ids:np.ndarray, text_embeddings:np.ndarray, rebuild_index:bool=False, load_index:bool=False, save_index:bool=True, threads:int=32):
+    def fit(self, text_token_ids:np.ndarray, text_embeddings:np.ndarray, rebuild_index:bool=False, load_index:bool=False, save_index:bool=True, threads:int=32, workers:int=4, posting_prune:float=0.0, start_text_idx:int=0):
         """
         1. Populate the inverted lists;
 
@@ -327,23 +313,40 @@ class BaseInvertedIndex(BaseIndex):
                     # os.path.join(tmp_dir, f"{i}.txt")
                 ))
 
-            with mp.Pool(threads) as p:
+            # process parallel consumes extensive memory if use lists to store;
+            with mp.Pool(workers) as p:
                 # imap returns an iterator
                 outputs = p.imap(build_inverted_lists, arguments)
 
                 text_idx_inverted_lists = [[] for _ in range(self.token_num)]
                 token_idx_inverted_lists = [[] for _ in range(self.token_num)]
 
-                for inv_lists_pair in tqdm(outputs, ncols=100, leave=False, desc="Merging Shards"):
+                self.logger.info("merging shards...")
+                for inv_lists_pair in tqdm(outputs, total=threads, ncols=100, leave=False):
                     text_idx_inverted_list = inv_lists_pair[0]
                     token_idx_inverted_list = inv_lists_pair[1]
                     for j in range(self.token_num):
                         text_idx_inverted_lists[j].extend(text_idx_inverted_list[j])
                         token_idx_inverted_lists[j].extend(token_idx_inverted_list[j])
 
-            synchronize()
+            # thread parallel is so slow (concurrent.futures.ThreadPoolExecutor)
+            # with ft.ThreadPoolExecutor(max_workers=threads) as executor:
+            #     text_idx_inverted_lists = [[] for _ in range(self.token_num)]
+            #     token_idx_inverted_lists = [[] for _ in range(self.token_num)]
+            #     # submit job to the thread pool
+            #     outputs = [executor.submit(build_inverted_lists, argument) for argument in arguments]
+            #     self.logger.info("merging shards...")
+            #     for inv_lists_pair in tqdm(ft.as_completed(outputs), total=threads, ncols=100, leave=False, desc="Merging Shards"):
+            #         text_idx_inverted_list = inv_lists_pair[0]
+            #         token_idx_inverted_list = inv_lists_pair[1]
+            #         for j in range(self.token_num):
+            #             text_idx_inverted_lists[j].extend(text_idx_inverted_list[j])
+            #             token_idx_inverted_lists[j].extend(token_idx_inverted_list[j])
 
-            for i in tqdm(range(self.token_num), ncols=100, leave=False, desc="Packing Posting Lists"):
+            synchronize()
+            self.logger.info("packing posting lists...")
+
+            for i in tqdm(range(self.token_num), ncols=100, leave=False):
                 text_indices = text_idx_inverted_lists[i]
                 if len(text_indices):
                     text_idx_inverted_lists[i] = torch.tensor(text_indices, device=self.device, dtype=torch.int32)
@@ -364,56 +367,47 @@ class BaseInvertedIndex(BaseIndex):
             raise NotImplementedError(f"Conflict Option: rebuild_index={rebuild_index}, load_index={load_index}, save_index={save_index}!")
 
         self.text_embeddings = text_embeddings
+        # offset
+        self.start_text_idx = start_text_idx
+        self.posting_prune = posting_prune
 
         # in case the embedding of each token is a scalar
         if text_embeddings.shape[-1] == 1:
+            # static posting list prune
+            # first sort the posting lists w.r.t. the token weight
             for token_id in tqdm(range(self.token_num), desc="Organizing Posting Lists", ncols=100, leave=False):
                 text_idx_posting_list = self.text_idx_inverted_lists[token_id]
                 # skip empty postings
                 if len(text_idx_posting_list) == 0:
                     continue
 
-                t1 = time.time()
-                text_idx_posting_list = text_idx_posting_list.long()
-                token_idx_posting_list = self.token_idx_inverted_lists[token_id].long()
-                t2 = time.time()
+                text_idx_posting_list = text_idx_posting_list.long()    # N
+                token_idx_posting_list = self.token_idx_inverted_lists[token_id].long() # N
 
-                impact_list = self.text_embeddings[text_idx_posting_list, token_idx_posting_list].squeeze(-1)
+                weight_posting_list = self.text_embeddings[text_idx_posting_list, token_idx_posting_list].squeeze(-1)   # N
 
-                # filter out the zero entries
-                nonzero_idx, = impact_list.nonzero(as_tuple=True)
-                impact_list = impact_list[nonzero_idx]
-                text_idx_posting_list = text_idx_posting_list[nonzero_idx]
-                token_idx_posting_list = token_idx_posting_list[nonzero_idx]
-                t3 = time.time()
+                non_zero = weight_posting_list > 0
+                text_idx_posting_list = text_idx_posting_list[non_zero]
+                token_idx_posting_list = token_idx_posting_list[non_zero]
 
-                # map the text id to index
-                unique_text_idx, unique_text_idx_index = text_idx_posting_list.unique(return_inverse=True)
-                # collect the largest score of a single text(token)
-                max_impact_list, max_impact_idx = scatter_max(impact_list, index=unique_text_idx_index)
-                t4 = time.time()
+                if posting_prune > 0:
+                    weight_posting_list = weight_posting_list[non_zero]
+                    _, sorted_idx = weight_posting_list.sort(dim=-1, descending=True)
+                    text_idx_inverted_list = text_idx_posting_list[sorted_idx]
+                    token_idx_inverted_list = token_idx_posting_list[sorted_idx]
 
-                # only slice the largest element
-                max_text_idx = text_idx_posting_list[max_impact_idx].to(torch.int32)
-                max_token_idx = token_idx_posting_list[max_impact_idx].to(torch.int16)
-                _, sorted_idx = max_impact_list.sort(dim=-1, descending=True)
-                self.text_idx_inverted_lists[token_id] = max_text_idx[sorted_idx]#.to("cpu")
-                self.token_idx_inverted_lists[token_id] = max_token_idx[sorted_idx]#.to("cpu")
+                self.text_idx_inverted_lists[token_id] = text_idx_posting_list
+                self.token_idx_inverted_lists[token_id] = token_idx_posting_list
 
-                t5 = time.time()
-                # print(t2-t1, t3-t2, t4-t3, t5-t4)
-
-
-            posting_lengths = np.array([len(x) for x in self.text_idx_inverted_lists if len(x) > 0], dtype=np.float32)
-            if self.posting_prune > 0:
+            if posting_prune > 0:
+                posting_lengths = np.array([len(x) for x in self.text_idx_inverted_lists if len(x) > 0], dtype=np.float32)
                 if self.posting_prune >= 1:
                     posting_prune = self.posting_prune
                 else:
                     posting_prune = int(np.percentile(posting_lengths, self.posting_prune * 100))
-            else:
-                posting_prune = 0
-            self.posting_prune = posting_prune
-            self.logger.info(f"pruning postings by {posting_prune}...")
+
+                self.posting_prune = posting_prune
+                self.logger.info(f"pruning postings by {posting_prune}...")
 
 
     def _prune_posting_list(self, posting_list):
@@ -430,16 +424,8 @@ class InvertedHitIndex(BaseInvertedIndex):
     """
     Inverted Hit Index with no scores
     """
-    def __init__(self, text_num:int, token_num:int, posting_prune:float, start_text_idx:int, device:DEVICE, save_dir:str, special_token_ids:Optional[set]=None) -> None:
-        super().__init__(
-            text_num=text_num,
-            token_num=token_num,
-            posting_prune=posting_prune,
-            start_text_idx=start_text_idx,
-            device=device,
-            save_dir=save_dir,
-            special_token_ids=special_token_ids
-        )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 
     def search(self, query_token_ids:np.ndarray, eval_posting_length:bool=False, query_start_idx:int=0, verifier:Optional[BasePostVerifier]=None, **kwargs) -> tuple[RETRIEVAL_MAPPING, Optional[np.array]]:
@@ -500,16 +486,8 @@ class InvertedVectorIndex(BaseInvertedIndex):
     """
     Inverted Vector Index as described in `COIL <https://aclanthology.org/2021.naacl-main.241.pdf>`_.
     """
-    def __init__(self, text_num:int, token_num:int, posting_prune:float, start_text_idx:int, device:DEVICE, save_dir:str, special_token_ids:Optional[set]=None) -> None:
-        super().__init__(
-            text_num=text_num,
-            token_num=token_num,
-            posting_prune=posting_prune,
-            start_text_idx=start_text_idx,
-            device=device,
-            save_dir=save_dir,
-            special_token_ids=special_token_ids
-        )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 
     def search(self, query_token_ids:np.ndarray, query_embeddings:Optional[np.ndarray], hits, eval_posting_length:bool=False, query_start_idx:int=0, verifier:Optional[BasePostVerifier]=None, **kwargs) -> tuple[RETRIEVAL_MAPPING, Optional[np.ndarray]]:
@@ -720,8 +698,8 @@ class BaseAnseriniIndex(BaseIndex):
             return True, query_split_dir
 
         else:
-            os.makedirs(tmp_query_dir, exist_ok=True)
             if query_token_ids is not None:
+                os.makedirs(tmp_query_dir, exist_ok=True)
                 query_path = os.path.join(tmp_query_dir, "queries.token.tsv")
                 with open(query_path, "w") as f:
                     for qid, qcontent in zip(qids, qcontents):
@@ -1744,7 +1722,7 @@ def build_inverted_lists(args):
     text_idx_inverted_lists = [[] for _ in range(token_num)]
     token_idx_inverted_lists = [[] for _ in range(token_num)]
 
-    for text_idx, token_ids in enumerate(tqdm(token_ids, ncols=100, leave=False, desc=f"Fitting Inverted Index")):
+    for text_idx, token_ids in enumerate(tqdm(token_ids, ncols=100, leave=False)):
         for token_idx, token_id in enumerate(token_ids):
             if token_id == -1 or token_id in stop_token_ids:
                 continue

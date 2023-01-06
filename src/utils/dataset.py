@@ -38,6 +38,7 @@ class BaseDataset(Dataset):
         self.cls_token_id = config.special_token_ids["cls"][1]
         self.sep_token_id = config.special_token_ids["sep"][1]
         self.pad_token_id = config.special_token_ids["pad"][1]
+        self.special_token_ids = [x[1] for x in config.special_token_ids.values() if x[0] is not None]
 
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
 
@@ -380,6 +381,17 @@ class TextDataset(BaseDataset):
         if self.config.get("return_embedding"):
             return_dict["text_embedding"] = self.text_embeddings[index].astype(np.float32)
 
+        if self.config.get("return_first_mask"):
+            text_first_mask = np.zeros(self.config.text_length, dtype=np.bool)
+            token_set = set()
+            for i, token_id in enumerate(text["input_ids"]):
+                if token_id in self.special_token_ids:
+                    continue
+                if token_id in token_set:
+                    continue
+                text_first_mask[i] = 1
+                token_set.add(token_id)
+            return_dict["text_first_mask"] = text_first_mask
         return return_dict
 
 
@@ -422,6 +434,18 @@ class QueryDataset(BaseDataset):
 
         if self.config.get("return_embedding"):
             return_dict["query_embedding"] = self.query_embeddings[index].astype(np.float32)
+
+        if self.config.get("return_first_mask"):
+            query_first_mask = np.zeros(self.config.query_length, dtype=np.bool)
+            token_set = set()
+            for i, token_id in enumerate(query["input_ids"]):
+                if token_id in self.special_token_ids:
+                    continue
+                if token_id in token_set:
+                    continue
+                query_first_mask[i] = 1
+                token_set.add(token_id)
+            return_dict["query_first_mask"] = query_first_mask
 
         return return_dict
 

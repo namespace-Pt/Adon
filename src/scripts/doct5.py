@@ -25,7 +25,7 @@ def main(manager):
 
     max_length = config.query_length
     query_per_doc = config.query_per_doc
-    mmp_path = os.path.join(config.cache_root, "dataset", "text", "doct5.mmp")
+    mmp_path = os.path.join(config.cache_root, "dataset", "text", ",".join([str(x) for x in config.text_col]), "t5", "doct5.mmp")
     doct5_path = os.path.join(config.data_root, config.dataset, "doct5.tsv")
 
     model = T5ForConditionalGeneration.from_pretrained(config.plm_dir).to(config.device)
@@ -72,8 +72,15 @@ def main(manager):
         ).reshape(len(loader_text.dataset), query_per_doc, max_length)
         query_token_ids_mmp[loader_text.sampler.start: loader_text.sampler.end] = query_token_ids
 
+        if config.is_main_proc:
+            with open(doct5_path, "w") as f:
+                for sequences in tqdm(query_token_ids, ncols=100, desc="Decoding"):
+                    texts = tokenizer.batch_decode(sequences, skip_special_tokens=True)    # N
+                    f.write("\t".join(texts) + "\n")
+
     # tokenize psudo queries by preprocess_plm and save it in the dataset/text/preprocess_plm/doct5.mmp
-    if config.is_main_proc:
+    # only need to do so when we want to re-tokenize the generated query by another plm
+    if config.is_main_proc and config.plm_tokenizer != "t5":
         # load all saved token ids
         query_token_ids = np.memmap(
             mmp_path,
@@ -81,13 +88,7 @@ def main(manager):
             mode="r+"
         ).reshape(len(loader_text.dataset), query_per_doc, max_length)
 
-        if not config.load_encode:
-            with open(doct5_path, "w") as f:
-                for sequences in tqdm(query_token_ids, ncols=100, desc="Decoding"):
-                    texts = tokenizer.batch_decode(sequences, skip_special_tokens=True)    # N
-                    f.write("\t".join(texts) + "\n")
-
-        cache_dir = os.path.join(config.cache_root, "dataset", "text", config.plm_tokenizer)
+        cache_dir = os.path.join(config.cache_root, "dataset", "text", ",".join([str(x) for x in config.text_col]), config.plm_tokenizer)
         os.makedirs(cache_dir, exist_ok=True)
         tokenize_thread = config.tokenize_thread
         all_line_count = len(loader_text.dataset)

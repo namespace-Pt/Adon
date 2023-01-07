@@ -13,5 +13,8 @@ base:
   # default to evaluation mode
   mode: script
 
+do_text: true
+do_query: true
+
 pretokenize: true
 tokenize_thread: 32

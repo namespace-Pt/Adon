@@ -269,7 +269,7 @@ class BaseInvertedIndex(BaseIndex):
         self.token_idx_inverted_lists_path = os.path.join(save_dir, f"token_idx_inverted_lists_{self.rank}.pt")
 
 
-    def fit(self, text_token_ids:np.ndarray, text_embeddings:np.ndarray, rebuild_index:bool=False, load_index:bool=False, save_index:bool=True, threads:int=32, workers:int=4, posting_prune:float=0.0, start_text_idx:int=0):
+    def fit(self, text_token_ids:np.ndarray, text_embeddings:np.ndarray, rebuild_index:bool=False, load_index:bool=False, save_index:bool=True, threads:int=16, shards:int=32, posting_prune:float=0.0, start_text_idx:int=0):
         """
         1. Populate the inverted lists;
 
@@ -297,10 +297,10 @@ class BaseInvertedIndex(BaseIndex):
             self.token_idx_inverted_lists = torch.load(self.token_idx_inverted_lists_path, map_location=self.device)
         # construct posting lists when the model needs to rebuild index, or when the posting lists doesn't exist
         elif rebuild_index or not os.path.exists(self.text_idx_inverted_lists_path):
-            text_num_per_thread = len(text_token_ids) / threads
+            text_num_per_thread = len(text_token_ids) / shards
             # tmp_dir = os.path.join(self.save_dir, "posting_lists_tmp", str(self.device.index))
             arguments = []
-            for i in range(threads):
+            for i in range(shards):
                 start_idx = round(text_num_per_thread * i)
                 end_idx = round(text_num_per_thread * (i+1))
 
@@ -314,7 +314,7 @@ class BaseInvertedIndex(BaseIndex):
                 ))
 
             # process parallel consumes extensive memory if use lists to store;
-            with mp.Pool(workers) as p:
+            with mp.Pool(threads) as p:
                 # imap returns an iterator
                 outputs = p.imap(build_inverted_lists, arguments)
 
@@ -322,7 +322,7 @@ class BaseInvertedIndex(BaseIndex):
                 token_idx_inverted_lists = [[] for _ in range(self.token_num)]
 
                 self.logger.info("merging shards...")
-                for inv_lists_pair in tqdm(outputs, total=threads, ncols=100, leave=False):
+                for inv_lists_pair in tqdm(outputs, total=shards, ncols=100, leave=False):
                     text_idx_inverted_list = inv_lists_pair[0]
                     token_idx_inverted_list = inv_lists_pair[1]
                     for j in range(self.token_num):
@@ -330,13 +330,13 @@ class BaseInvertedIndex(BaseIndex):
                         token_idx_inverted_lists[j].extend(token_idx_inverted_list[j])
 
             # thread parallel is so slow (concurrent.futures.ThreadPoolExecutor)
-            # with ft.ThreadPoolExecutor(max_workers=threads) as executor:
+            # with ft.ThreadPoolExecutor(max_workers=shards) as executor:
             #     text_idx_inverted_lists = [[] for _ in range(self.token_num)]
             #     token_idx_inverted_lists = [[] for _ in range(self.token_num)]
             #     # submit job to the thread pool
             #     outputs = [executor.submit(build_inverted_lists, argument) for argument in arguments]
             #     self.logger.info("merging shards...")
-            #     for inv_lists_pair in tqdm(ft.as_completed(outputs), total=threads, ncols=100, leave=False, desc="Merging Shards"):
+            #     for inv_lists_pair in tqdm(ft.as_completed(outputs), total=shards, ncols=100, leave=False, desc="Merging Shards"):
             #         text_idx_inverted_list = inv_lists_pair[0]
             #         token_idx_inverted_list = inv_lists_pair[1]
             #         for j in range(self.token_num):

@@ -94,7 +94,7 @@ class COIL(BaseSparseModel):
         return query_token_id.cpu().numpy(), query_token_embedding.cpu().numpy()
 
 
-    def compute_score(self, x):
+    def rerank_step(self, x):
         """
         Given a query and a sequence, output the sequence's score
         """

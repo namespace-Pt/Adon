@@ -251,7 +251,7 @@ class Manager():
 
         if config.mode == "train":
             if config.debug:
-                config.eval_step = 5
+                config.eval_step = 10
                 config.eval_delay = 0
 
         # some awkward dataset specific setting
@@ -262,7 +262,7 @@ class Manager():
             if config.get("eval_metric"):
                 config.eval_metric = "mrr,map,precision,ndcg".split(",")
                 config.eval_metric_cutoff = [5, 10, 20, 30]
-        elif config.dataset == "NQ":
+        elif config.dataset in ["NQ", "NQ-url"]:
             if config.get("eval_metric"):
                 config.eval_metric_cutoff = [1, 5, 10, 100, 1000]
             if config.get("index_type") in ANSERINI_INDEX_MAP:

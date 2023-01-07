@@ -7,7 +7,7 @@ from multiprocessing import Pool
 from collections import defaultdict
 from transformers import AutoTokenizer
 from utils.manager import Manager
-from utils.util import save_pickle
+from utils.util import save_pickle, load_pickle
 from utils.typings import *
 
 import hydra
@@ -204,28 +204,30 @@ if __name__ == "__main__":
 
     cache_dir = os.path.join(config.cache_root, "dataset")
     data_dir = os.path.join(config.data_root, config.dataset)
+    text_dir = os.path.join(cache_dir, "text")
 
     tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
     tokenizer_type = config.plm_tokenizer
 
     collection_path = os.path.join(data_dir, "collection.tsv")
-    tid2index = init_text(collection_path, os.path.join(cache_dir, "text"))
-    if config.pretokenize:
-        tokenize_to_memmap(collection_path, os.path.join(cache_dir, "text"), len(tid2index), config.max_text_length, tokenizer, tokenizer_type, config.tokenize_thread, text_col=config.text_col, text_col_sep=config.text_col_sep)
-        # the titled version
-        if config.dataset == "MSMARCO-passage":
-            tokenize_to_memmap(collection_path, os.path.join(cache_dir, "text-title"), len(tid2index), config.max_text_length, tokenizer, tokenizer_type, config.tokenize_thread, text_col=[1,2], text_col_sep=config.text_col_sep)
-            save_pickle(tid2index, os.path.join(cache_dir, "text-title", "id2index.pkl"))
 
-    query_path = os.path.join(data_dir, "queries.train.tsv")
-    qrel_path = os.path.join(data_dir, "qrels.train.tsv")
-    qid2index = init_query_and_qrel(query_path, qrel_path, os.path.join(cache_dir, "train"), tid2index)
-    if config.pretokenize:
-        tokenize_to_memmap(os.path.join(data_dir, "queries.train.small.tsv"), os.path.join(cache_dir, "train"), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)
+    if config.do_text:
+        tid2index = init_text(collection_path, text_dir)
+        if config.pretokenize:
+            tokenize_to_memmap(collection_path, os.path.join(text_dir, ','.join([str(x) for x in config.text_col])), len(tid2index), config.max_text_length, tokenizer, tokenizer_type, config.tokenize_thread, text_col=config.text_col, text_col_sep=config.text_col_sep)
 
-    query_path = os.path.join(data_dir, "queries.dev.tsv")
-    qrel_path = os.path.join(data_dir, "qrels.dev.tsv")
-    qid2index = init_query_and_qrel(query_path, qrel_path, os.path.join(cache_dir, "dev"), tid2index)
-    if config.pretokenize:
-        tokenize_to_memmap(os.path.join(data_dir, "queries.dev.small.tsv"), os.path.join(cache_dir, "dev"), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)
+    if config.do_query:
+        tid2index = load_pickle(os.path.join(text_dir, "id2index.pkl"))
+
+        query_path = os.path.join(data_dir, "queries.train.tsv")
+        qrel_path = os.path.join(data_dir, "qrels.train.tsv")
+        qid2index = init_query_and_qrel(query_path, qrel_path, os.path.join(cache_dir, "train"), tid2index)
+        if config.pretokenize:
+            tokenize_to_memmap(os.path.join(data_dir, "queries.train.small.tsv"), os.path.join(cache_dir, "train"), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)
+
+        query_path = os.path.join(data_dir, "queries.dev.tsv")
+        qrel_path = os.path.join(data_dir, "qrels.dev.tsv")
+        qid2index = init_query_and_qrel(query_path, qrel_path, os.path.join(cache_dir, "dev"), tid2index)
+        if config.pretokenize:
+            tokenize_to_memmap(os.path.join(data_dir, "queries.dev.small.tsv"), os.path.join(cache_dir, "dev"), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)
 

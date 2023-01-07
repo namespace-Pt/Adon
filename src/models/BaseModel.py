@@ -453,7 +453,7 @@ class BaseModel(nn.Module):
         for i, x in enumerate(tqdm(loader_rerank, ncols=100, leave=False)):
             query_idx = x["query_idx"].tolist()	# B
             text_idx = x["text_idx"].tolist()	# B
-            score = self.compute_score(x).cpu().tolist()	# B
+            score = self.rerank_step(x).cpu().tolist()	# B
             for j, qidx in enumerate(query_idx):
                 retrieval_result[qidx].append((text_idx[j], score[j]))
 
@@ -1014,8 +1014,8 @@ class BaseSparseModel(BaseModel):
             rebuild_index=self._rebuild_index,
             load_index=self.config.load_index,
             save_index=self.config.save_index,
-            threads=self.config.get("index_thread", 32) // self.config.world_size,
-            workers=16 // self.config.world_size,
+            threads=self.config.get("index_thread", 16) // self.config.world_size,
+            shards=self.config.get("index_shard", 32) // self.config.world_size,
             posting_prune=self.config.get("posting_prune", 0),
             start_text_idx=loader_text.sampler.start,
         )
@@ -1080,7 +1080,6 @@ class BaseSparseModel(BaseModel):
                 text_cols=self.config.text_col,
                 text_token_ids=text_token_ids,
                 text_token_weights=text_token_weights,
-                quantize_bit=self.config.quantize_bit,
                 tokenizer=AutoTokenizer.from_pretrained(self.config.plm_dir),
                 stop_words=stop_words,
                 thread_num=self.config.index_thread,
@@ -1088,6 +1087,7 @@ class BaseSparseModel(BaseModel):
                 enable_build_index=enable_build_index,
                 language=self.config.get("language"),
                 subword_to_word=subword_to_word,
+                quantize_bit=self.config.get("quantize_bit"),
                 reduce=self.config.get("reduce"),
             )
 
@@ -1898,7 +1898,7 @@ class BaseGenerativeModel(BaseModel):
             outputs = self._generate(
                 **query,
                 min_length=None,
-                max_length=self.config.code_length,
+                max_new_tokens=self.config.code_length,
                 do_sample=False,
                 return_dict_in_generate=True,
                 output_scores=True,
@@ -1945,101 +1945,3 @@ class BaseGenerativeModel(BaseModel):
             )
 
         return retrieval_result
-
-
-    @synchronize
-    @torch.no_grad()
-    def rerank(self, loaders:LOADERS):
-        """Evaluate by reranking.
-        """
-        assert self.config.eval_batch_size == 1, "Reranking by generation must be performed with eval_batch_size=1!"
-
-        loader_query = loaders["query"]
-        loader_text = loaders["text"]
-
-        def prefix_allowed_tokens_fn(batch_id, sent):
-            valid = trie.get_next_keys(sent.cpu().numpy())
-            return valid
-
-        # get all the text codes
-        encode_output = self.encode_text(loader_text)    # N, L
-        text_codes = encode_output.codes
-
-        self.logger.info(f"reranking...")
-
-        if os.path.exists(self.config.candidate_type):
-            candidate_path = self.config.candidate_type
-        elif os.path.exists(os.path.join(self.config.cache_root, "retrieve", self.config.candidate_type, self.config.eval_set, "retrieval_result.pkl")):
-            candidate_path = os.path.join(self.config.cache_root, "retrieve", self.config.candidate_type, self.config.eval_set, "retrieval_result.pkl")
-        else:
-            raise FileNotFoundError(f"{self.config.candidate_type} Not Found!")
-
-        # pad retrieval result
-        candidates = load_pickle(candidate_path)
-
-        # save the generated codes for each query
-        if self.config.save_encode:
-            query_codes = np.full((len(loader_query.sampler), self.config.hits, self.config.code_length), self.config.special_token_ids["pad"][1], dtype=np.int32)
-
-        retrieval_result = {}
-
-        for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
-            # the query may be paralleled, however, the query_idx returned from the dataloader is always the correst global index
-            query_idx = x["query_idx"].tolist()[0]
-            query = self._move_to_device(x["query"])
-
-            candidate = candidates[query_idx]
-
-            trie = TRIE_INDEX_MAP[self.config.index_type](
-                save_dir=os.path.join(self.code_dir, "tries"),
-                pad_token_id=self.config.special_token_ids["pad"][1]
-            )
-            # use the candidate idxs as ids
-            trie.add(text_codes[candidate], ids=candidate, verbose=False)
-
-            outputs = self._generate(
-                **query,
-                min_length=None,
-                max_length=self.config.code_length,
-                do_sample=False,
-                return_dict_in_generate=True,
-                output_scores=True,
-                num_return_sequences=self.config.hits,
-                num_beams=self.config.nbeam,
-                length_penalty=self.config.length_penalty,
-                prefix_allowed_tokens_fn=prefix_allowed_tokens_fn
-            )
-
-            codes = outputs.sequences.view(self.config.hits, -1).cpu().numpy()   # n, L; n is the num_return_sequences
-            scores = outputs.sequences_scores.view(self.config.hits).cpu().numpy()    # n
-
-            # cache the codes
-            if self.config.save_encode:
-                query_codes[query_idx, :, :codes.shape[-1]] = codes
-
-            res = defaultdict(list)
-            for k, c in enumerate(codes):
-                # sometimes the generated code may stop at early steps, just do padding otherwise the leaf cannot be found
-                if len(c) < self.config.code_length:
-                    c = c.tolist() + [0] * (self.config.code_length - len(c))
-                ids = trie[c]
-                for id in ids:
-                    res[id].append(scores[k])
-            retrieval_result[query_idx] = [(k, max(v)) for k, v in res.items()]
-
-            if self.config.debug:
-                if i > 2:
-                    break
-
-        if self.config.save_encode:
-            self.save_to_mmp(
-                os.path.join(self.retrieve_dir, "query_codes.mmp"),
-                shape=(len(loader_query.dataset), self.config.hits, self.config.code_length),
-                dtype=query_codes.dtype,
-                loader=loader_query,
-                obj=query_codes
-            )
-
-        return retrieval_result
-
-

@@ -44,15 +44,10 @@ class BaseDataset(Dataset):
 
         if load_text:
             if load_text == "memmap":
-                text_suffix = []
-                if config.get("expand_doct5") and config.dataset == "MSMARCO-passage":
-                    text_suffix.append("expand")
-                if config.get("expand_title") and config.dataset == "MSMARCO-passage":
-                    text_suffix.append("title")
-                text_name = "-".join(["text", *text_suffix])
+                text_name = ",".join([str(x) for x in config.text_col])
 
                 self.text_token_ids = np.memmap(
-                    os.path.join(self.cache_dir, text_name, config.plm_tokenizer, "token_ids.mmp"),
+                    os.path.join(self.cache_dir, "text", text_name, config.plm_tokenizer, "token_ids.mmp"),
                     mode="r",
                     dtype=np.int32
                 ).reshape(-1, config.max_text_length)[:, :self.config.text_length]

@@ -32,7 +32,7 @@ class CrossEncoder(BaseModel):
         return score
 
 
-    def compute_score(self, x):
+    def rerank_step(self, x):
         x = self._move_to_device(x)
         if "text_code" in x:
             # concate query and text code as inputs

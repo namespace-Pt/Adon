@@ -84,7 +84,7 @@ class DPR(BaseDenseModel):
         return loss
 
 
-    def compute_score(self, x):
+    def rerank_step(self, x):
         """
         given a query and a sequence, output the sequence's score
         """

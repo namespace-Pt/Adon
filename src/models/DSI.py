@@ -32,3 +32,17 @@ class DSI(BaseGenerativeModel):
 
         loss = self.plm(**query, labels=labels).loss
         return loss
+
+
+    def rerank_step(self, x):
+        """
+        Rerank using the log sum of the generation probabilities.
+        """
+        x = self._move_to_device(x)
+        query = x["query"]
+        # starts with 0
+        text_code = x["text_code"]
+        logits = self.plm(**query, decoder_input_ids=text_code).logits
+        logits = logits.log_softmax(-1)
+        score = logits.gather(dim=-1, index=text_code[:, 1:, None]).squeeze(-1).sum(-1)
+        return score

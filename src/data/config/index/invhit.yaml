@@ -6,4 +6,5 @@ index_type: invhit
 
 # the fraction or number of items per posting
 posting_prune: 0.
-index_thread: 32
+index_shard: 32
+index_thread: 16

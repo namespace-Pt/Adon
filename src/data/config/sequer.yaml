@@ -5,7 +5,7 @@ defaults:
   - model: ranker
   - index: trie
   - train: neg
-  - eval: rerank
+  - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -14,16 +14,13 @@ base:
 
 model:
   model_type: sequer
+  train_scheme: contra
   # force all token score's order?
   ranking_token: all
-  # in reranking evaluation with beams, which token score to use
-  beam_ranking: none
   # beam size
-  nbeam: 100
+  nbeam: 10
   # length penalty in generic beam scoring
   length_penalty: 0
-  # in retrieve mode, limit the corpus to the candidates' subtree
-  retrieve_candidate: false
   # how to restore missing branches
   restore: none
 
@@ -46,3 +43,5 @@ train:
 eval:
   candidate_type: DPR_hn
   parallel: query
+
+  hits: 10

@@ -18,7 +18,7 @@ model:
   code_type: title
   code_length: 34
 
-  nbeams: 10
+  nbeam: 10
   return_code: True
 
 index:

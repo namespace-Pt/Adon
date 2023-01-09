@@ -19,7 +19,7 @@ model:
   code_length: 10
   code_size: 10
 
-  nbeams: 10
+  nbeam: 10
   return_code: True
 
 index:

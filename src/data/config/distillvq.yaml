@@ -29,7 +29,7 @@ index:
 
 train:
   distill_src: RetroMAE
-  objective: kd
+  enable_distill: bi
 
   epoch: 50
   batch_size: 128

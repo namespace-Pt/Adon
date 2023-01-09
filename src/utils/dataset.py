@@ -86,14 +86,6 @@ class BaseDataset(Dataset):
                     dtype=np.float32
                 ).reshape(self.text_num, -1)
 
-            # only load teacher embeddings when training
-            if config.get("objective") == "kd" and config.mode == "train":
-                self.text_teacher_embeddings = np.memmap(
-                    os.path.join(config.cache_root, "encode", config.distill_src, "text_embeddings.mmp"),
-                    mode="r",
-                    dtype=np.float32
-                ).reshape(self.text_num, -1)
-
         if load_query:
             assert load_query in ["train-memmap", "dev-memmap", "test-memmap", "train-raw", "dev-raw", "test-raw"]
             mode, data_format = load_query.split("-")
@@ -125,13 +117,6 @@ class BaseDataset(Dataset):
                     mode="r",
                     dtype=np.float32
                 ).reshape(self.query_num, -1)
-
-            if config.get("objective") == "kd" and config.mode == "train":
-                self.query_teacher_embeddings = np.memmap(
-                    os.path.join(config.cache_root, "encode", config.distill_src, mode, "query_embeddings.mmp"),
-                    mode="r",
-                    dtype=np.float32
-                ).reshape(self.query_num, 768)
 
 
     def init_negative(self, qrel_path, negative_path):
@@ -232,6 +217,19 @@ class TrainDataset(BaseDataset):
         negative_path = os.path.join(self.cache_dir, "train", f"negatives_{config.hard_neg_type}.pkl")
         self.qrels, self.negatives = self.init_negative(qrel_path, negative_path)
 
+        if config.enable_distill == "bi":
+            self.text_teacher_embeddings = np.memmap(
+                os.path.join(config.cache_root, "encode", config.distill_src, "text_embeddings.mmp"),
+                mode="r",
+                dtype=np.float32
+            ).reshape(self.text_num, -1)
+
+            self.query_teacher_embeddings = np.memmap(
+                os.path.join(config.cache_root, "encode", config.distill_src, "train", "query_embeddings.mmp"),
+                mode="r",
+                dtype=np.float32
+            ).reshape(self.query_num, 768)
+
 
     def __len__(self):
         return len(self.qrels)
@@ -290,13 +288,12 @@ class TrainDataset(BaseDataset):
             query_sep_mask[sep_pos] = 0
             return_dict["query_sep_mask"] = query_sep_mask
 
-        if self.config.objective == "kd":
-            if self.config.distill_type == "bi":
-                return_dict["query_teacher_embedding"] = self.query_teacher_embeddings[query_idx].astype(np.float32)
-                return_dict["text_teacher_embedding"] = self.text_teacher_embeddings[text_idx].astype(np.float32)
-            elif self.config.distill_type == "cross":
-                # TODO
-                pass
+        if self.config.enable_distill == "bi":
+            return_dict["query_teacher_embedding"] = self.query_teacher_embeddings[query_idx].astype(np.float32)
+            return_dict["text_teacher_embedding"] = self.text_teacher_embeddings[text_idx].astype(np.float32)
+        elif self.config.enable_distill == "cross":
+            # TODO
+            pass
 
         if self.config.get("return_embedding"):
             return_dict["query_embedding"] = self.query_embeddings[query_idx].astype(np.float32)

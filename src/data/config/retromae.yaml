@@ -13,7 +13,7 @@ base:
   mode: eval
 
   plm: retromae
-  expand_title: True
+  text_col: [1, 2]
   text_length: 140
 
 model:

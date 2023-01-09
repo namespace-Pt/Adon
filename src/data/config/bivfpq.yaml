@@ -9,7 +9,7 @@ defaults:
 
 base:
   mode: eval
-  expand_title: true
+  text_col: [1, 2]
 
 eval:
   verifier_type: pq
@@ -28,7 +28,7 @@ model:
   x_load_encode: true
   x_text_gate_k: 5
   x_load_ckpt: best
-  x_expand_title: true
+  x_text_col: [1, 2]
 
   y_model: TopIVF
   y_index_type: invhit

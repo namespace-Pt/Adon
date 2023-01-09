@@ -271,9 +271,6 @@ class Manager():
         elif config.dataset == "NQ-open":
             if config.get("main_metric"):
                 config.main_metric = "Recall@10"
-        elif config.dataset == "MSMARCO-passage":
-            if config.expand_title:
-                config.text_col = [1, 2]
 
         # convert the dictionary to a Config object that supports dot access
         self.config = config
@@ -598,6 +595,8 @@ class AdonTrainer(Trainer):
             # neat printing
             print()
 
+        # release cache
+        self._memory_tracker.start()
         metrics = self.model.evaluate(self.loaders, log=False)
 
         if self.state.is_world_process_zero:
@@ -619,6 +618,9 @@ class AdonTrainer(Trainer):
 
         # very important to set it back; otherwise the evaluate function may be called twice at epoch end
         self.control.should_evaluate = False
+        # release cache
+        self._memory_tracker.stop_and_update_metrics()
+
 
     def _inner_training_loop(
         self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None

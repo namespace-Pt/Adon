@@ -11,7 +11,7 @@ defaults:
 
 base:
   plm: retromae_msmarco
-  expand_title: true
+  text_col: [1, 2]
 
 model:
   model_type: tokivf
@@ -21,7 +21,7 @@ model:
 
 train:
   hard_neg_num: 7
-  objective: kd
+  enable_distill: bi
   distill_src: RetroMAE
 
 eval:

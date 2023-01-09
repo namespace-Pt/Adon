@@ -109,7 +109,7 @@ class BaseModel(nn.Module):
         """
         Compute teacher score in knowledge distillation; return None if training in contrastive mode.
         """
-        if self.config.objective == "kd":
+        if self.config.enable_distill:
             if "teacher_score" in x:
                 teacher_score = x["teacher_score"]  # B, 1+N
 
@@ -128,11 +128,8 @@ class BaseModel(nn.Module):
             else:
                 raise ValueError("At least teacher_score or query/text teacher embedding should be provided in knowledge distillation!")
 
-        elif self.config.objective == "contra":
-            teacher_score = None
-
         else:
-            raise NotImplementedError(f"Objective type {self.config.objective} not implemented!")
+            teacher_score = None
         return teacher_score
 
 

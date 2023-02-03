@@ -16,8 +16,6 @@ from collections import defaultdict
 from .util import save_pickle, load_pickle, MasterLogger, makedirs, isempty, synchronize
 from .typings import *
 
-import concurrent.futures as ft
-
 
 
 class BaseIndex(object):
@@ -310,7 +308,6 @@ class BaseInvertedIndex(BaseIndex):
                     start_idx,
                     self.token_num,
                     self.special_token_ids,
-                    # os.path.join(tmp_dir, f"{i}.txt")
                 ))
 
             # process parallel consumes extensive memory if use lists to store;
@@ -504,6 +501,8 @@ class InvertedVectorIndex(BaseInvertedIndex):
         """
         assert hits > 0
         if isinstance(query_embeddings, np.ndarray):
+            if not query_embeddings.flags.writeable:
+                query_embeddings = query_embeddings.copy()
             query_embeddings = torch.as_tensor(query_embeddings, device=self.device)
 
         retrieval_result = {}
@@ -605,36 +604,14 @@ class BaseAnseriniIndex(BaseIndex):
         return retrieval_result
 
 
-    def generate_collection(self, collection_path=None, output_dir=None, text_cols=[-1], max_docs_per_file=1000000):
-        self.logger.info("converting tsv to jsonl collection...")
-        if collection_path is None:
-            collection_path = self.collection_path
-        if output_dir is None:
-            output_dir = self.collection_dir
-
-        file_index = 0
-        with open(collection_path, encoding='utf-8') as f:
-            for i, line in enumerate(tqdm(f, ncols=100)):
-                columns = line.split('\t')
-                doc_id = columns[0]
-
-                text = []
-                for col_idx in text_cols:
-                    text.append(columns[col_idx].strip())
-                doc_text = " ".join(text)
-
-                if i % max_docs_per_file == 0:
-                    if i > 0:
-                        output_jsonl_file.close()
-                    output_path = os.path.join(output_dir, 'docs{:02d}.json'.format(file_index))
-                    output_jsonl_file = open(output_path, 'w', encoding='utf-8', newline='\n')
-                    file_index += 1
-                output_dict = {'id': doc_id, 'contents': doc_text}
-                output_jsonl_file.write(json.dumps(output_dict) + '\n')
-        output_jsonl_file.close()
-
-
     def prepare_query(self, query_path, query_token_ids, query_token_weights, qid2index, tmp_query_dir):
+        """
+        Generate temperary query file for anserini.
+
+        #. convert tokens to words if impact-word index
+
+        #. split query into multiple files if there are two many
+        """
         qids = []
         qcontents = []
         if query_token_ids is None:
@@ -645,41 +622,42 @@ class BaseAnseriniIndex(BaseIndex):
                     qcontents.append(qcontent.strip())
         else:
             qindex2id = {v: k for k, v in qid2index.items()}
-            if query_token_weights is not None:
+            # all weights is 1 means no weights; quantizing this case causes repetitive query tokens
+            if query_token_weights is not None and not (query_token_weights == 1).all():
                 query_token_weights = self._quantize(query_token_weights)
-                for i, token_id in enumerate(query_token_ids):
-                    unique_token_id = defaultdict(list)
-                    token = self.tokenizer.convert_ids_to_tokens(token_id)
-                    for j, tok in enumerate(token):
-                        if tok in self.stop_words:
-                            continue
-                        impact = query_token_weights[i, j]
-                        if impact <= 0:
-                            continue
-                        unique_token_id[tok].append(impact)
 
-                    new_token_list = []
-                    for tok, weights in unique_token_id.items():
-                        # use the max score
-                        weight = max(weights)
-                        # use replication to control token weight
-                        new_token_list += [tok] * weight
+            for i, token_ids in enumerate(query_token_ids):
+                word_score_dict = defaultdict(list)
+                tokens = self.tokenizer.convert_ids_to_tokens(token_ids)
 
-                    qids.append(qindex2id[i].strip())
-                    qcontents.append(" ".join(new_token_list))
-            else:
-                for i, token_id in enumerate(query_token_ids):
-                    token = self.tokenizer.convert_ids_to_tokens(token_id)
-                    new_token_list = []
-                    for j, tok in enumerate(token):
-                        if tok == -1:
-                            continue
-                        if tok in self.stop_words:
-                            continue
-                        new_token_list.append(tok)
+                if query_token_weights is not None:
+                    scores = query_token_weights[i]
+                else:
+                    # in case only pretokenize, no weights
+                    scores = [1] * len(tokens)
 
-                    qids.append(qindex2id[i].strip())
-                    qcontents.append(" ".join(new_token_list))
+                if hasattr(self, "subword_to_word") and self.subword_to_word is not None:
+                    words, scores = convert_tokens_to_words(tokens, self.subword_to_word, scores=scores, reduce=self.reduce)
+                else:
+                    words = tokens
+
+                for word, score in zip(words, scores):
+                    # only index the word with positive impact
+                    if score <= 0:
+                        continue
+                    if word in self.stop_words:
+                        continue
+                    word_score_dict[word].append(score)
+
+                weighted_words = []
+                for word, score in word_score_dict.items():
+                    # use the max score
+                    score = max(score)
+                    # use replication to control token weight
+                    weighted_words += [word] * int(score)
+
+                qids.append(qindex2id[i].strip())
+                qcontents.append(" ".join(weighted_words))
 
         # needs splitting
         if len(qids) > 10000:
@@ -728,6 +706,7 @@ class AnseriniImpactIndex(BaseAnseriniIndex):
 
 
     def _quantize(self, token_weights, quantize_bit=None):
+        # float32 is not serializable by json
         token_weights = np.ceil(token_weights * 100).astype(int)
         return token_weights
 
@@ -747,13 +726,17 @@ class AnseriniImpactIndex(BaseAnseriniIndex):
         """
         self.tokenizer = tokenizer
         self.stop_words = stop_words
+        # involked in prepare_query
+        self.subword_to_word = subword_to_word
+        self.reduce = reduce
 
         if enable_build_collection:
-            # if quantize_bit > 0:
-            #     max_impact = text_token_weights.max().item()
-            #     # quantize
-            #     scale = (1 << quantize_bit) / max_impact
-            #     text_token_weights = (text_token_weights * scale).astype(np.int32)
+            self.logger.info("building collections...")
+
+            if not isempty(self.collection_dir):
+                shutil.rmtree(self.collection_dir)
+                os.makedirs(self.collection_dir)
+
             text_token_weights = self._quantize(text_token_weights, quantize_bit)
 
             # each thread creates one jsonl file
@@ -781,6 +764,10 @@ class AnseriniImpactIndex(BaseAnseriniIndex):
                 p.starmap(build_impact_collection, arguments)
 
         if enable_build_index:
+            if len(os.listdir(self.index_dir)) > 0:
+                shutil.rmtree(self.index_dir)
+                os.makedirs(self.index_dir)
+
             # subprocess.run(f"""
             #     python -m pyserini.index.lucene --collection JsonVectorCollection \
             #     --generator DefaultLuceneDocumentGenerator \
@@ -882,6 +869,35 @@ class AnseriniBM25Index(BaseAnseriniIndex):
         super().__init__(collection_path, collection_dir, index_dir)
 
 
+    def generate_collection(self, collection_path=None, output_dir=None, text_cols=[-1], max_docs_per_file=1000000):
+        self.logger.info("converting tsv to jsonl collection...")
+        if collection_path is None:
+            collection_path = self.collection_path
+        if output_dir is None:
+            output_dir = self.collection_dir
+
+        file_index = 0
+        with open(collection_path, encoding='utf-8') as f:
+            for i, line in enumerate(tqdm(f, ncols=100)):
+                columns = line.split('\t')
+                doc_id = columns[0]
+
+                text = []
+                for col_idx in text_cols:
+                    text.append(columns[col_idx].strip())
+                doc_text = " ".join(text)
+
+                if i % max_docs_per_file == 0:
+                    if i > 0:
+                        output_jsonl_file.close()
+                    output_path = os.path.join(output_dir, 'docs{:02d}.json'.format(file_index))
+                    output_jsonl_file = open(output_path, 'w', encoding='utf-8', newline='\n')
+                    file_index += 1
+                output_dict = {'id': doc_id, 'contents': doc_text}
+                output_jsonl_file.write(json.dumps(output_dict) + '\n')
+        output_jsonl_file.close()
+
+
     def fit(self, text_cols, text_token_ids:Optional[np.ndarray]=None, tokenizer:Any=None, thread_num:int=32, enable_build_collection:bool=True, enable_build_index:bool=True, language:str="eng", stop_words:Optional[set]=None, **kwargs):
         """
         1. Convert the TSV collection into json collection by :mod:`scripts.collection`.
@@ -897,6 +913,8 @@ class AnseriniBM25Index(BaseAnseriniIndex):
         self.stop_words = stop_words
 
         if enable_build_collection:
+            self.logger.info("building collections...")
+
             if not isempty(self.collection_dir):
                 shutil.rmtree(self.collection_dir)
                 os.makedirs(self.collection_dir)
@@ -1727,7 +1745,6 @@ def build_inverted_lists(args):
             if token_id == -1 or token_id in stop_token_ids:
                 continue
             # save the token's position (text_idx, token_idx) in the inverted list
-
             text_idx_inverted_lists[token_id].append(start_text_idx + text_idx)
             token_idx_inverted_lists[token_id].append(token_idx)
 
@@ -1750,12 +1767,12 @@ def convert_tokens_to_words(tokens, subword_to_word, scores=None, reduce="max"):
     """
     transform the tokens output by tokenizer to words (connecting subwords)
     Returns:
-        words: list of words, without stop_words
+        words: list of words
     """
     words = []
     word_scores = []
     if scores is None:
-        scores = [-1] * len(tokens)
+        scores = [1] * len(tokens)
 
     for i, tok in enumerate(tokens):
         is_subword, word = subword_to_word(tok)
@@ -1827,7 +1844,8 @@ def build_impact_collection(token_ids, token_scores, text_start_idx, output_json
             for word, score in word_score_dict.items():
                 # use the max score of a word as its impact
                 score = max(score)
-                vector[word] = score
+                # json cannot parse numpy dtype
+                vector[word] = float(score)
 
             dic["id"] = idx + text_start_idx
             dic["contents"] = ""

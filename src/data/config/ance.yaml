@@ -21,4 +21,5 @@ index:
 train:
   batch_size: 128
   learning_rate: 3e-5
+  scheduler: linear
   hard_neg_type: DPR

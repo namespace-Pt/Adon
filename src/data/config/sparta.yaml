@@ -13,6 +13,10 @@ model:
   model_type: sparta
   text_decode_k: 200
 
+index:
+  bow_state: is
+  return_first_mask: false
+
 train:
   hard_neg_num: 7
   learning_rate: 3e-5

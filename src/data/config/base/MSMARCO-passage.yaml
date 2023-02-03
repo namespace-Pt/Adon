@@ -10,8 +10,6 @@ max_query_length: 64
 
 plm: bert
 
-expand_title: False
-expand_doct5: False
 
 text_col: [2]
 text_col_sep: "sep"

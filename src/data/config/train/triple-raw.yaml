@@ -5,7 +5,7 @@ defaults:
 # triple type used in triple-raw dataloader
 triple_type: bm25
 # triple dataset total iteration steps
-total_step: 0
+max_step: 0
 
 hard_neg_type: triple
 hard_neg_num: 1

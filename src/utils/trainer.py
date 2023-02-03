@@ -1,20 +1,13 @@
 import os
 import torch
-import logging
 import transformers
-import random
-import numpy as np
 import torch.nn as nn
 import torch.distributed as dist
 from tqdm import tqdm
-from omegaconf import OmegaConf
 from dataclasses import field, dataclass
-from transformers import AutoModel, AutoTokenizer, Trainer, TrainingArguments, TrainerCallback, DefaultFlowCallback, ProgressCallback
+from transformers import Trainer, TrainingArguments, TrainerCallback, DefaultFlowCallback, ProgressCallback
 from torch.utils.data import DataLoader
-
 from .typings import *
-from .util import Sequential_Sampler, Config, MasterLogger, update_hydra_config, flatten_hydra_config, default_collate, all_logging_disabled, synchronize
-from .dataset import TrainDataset, TextDataset, QueryDataset, RawTripleTrainDataset, PairDataset, NMTTrainDataset
 
 from transformers.training_args import (
     cached_property,
@@ -71,353 +64,70 @@ if is_sagemaker_mp_enabled():
     import smdistributed.modelparallel.torch as smp
     smp.init()
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s (%(name)s) %(message)s")
 # prevent warning of transformers
 transformers.logging.set_verbosity_error()
-logging.getLogger("faiss.loader").setLevel(logging.ERROR)
-logging.getLogger("torch.distributed.distributed_c10d").setLevel(logging.WARNING)
 
 
-
-class Manager():
+def train(model, loaders):
     """
-    Manager handles three things:
+    train the model
 
-    #. intializing config :func:`~utils.manager.Manager.setup`;
-
-    #. preparing dataloader :func:`~utils.manager.Manager.prepare`;
-
-    #. train models :func:`~utils.manager.Manager.train`;
-
-    Attributes:
-        config(dict): the configuration of the models, indexes etc.
-
+    Args:
+        model
+        loaders: returned by :func:`~utils.manager.Manager.prepare`
     """
-    def __init__(self):
-        self.logger = MasterLogger("Manager")
+    from .data import prepare_train_data, default_collate
 
+    config = model.config
+    train_dataset = prepare_train_data(config)
 
-    def _set_seed(self, seed:Optional[int]=None):
-        """
-        Set random seed
-        """
-        if seed is None:
-            seed = self.config.seed
-        self.logger.info(f"setting seed to {seed}...")
-        # set seed
-        random.seed(seed)
-        os.environ["PYTHONHASHSEED"] = str(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        # torch.backends.cudnn.deterministic = True
+    args = AdonTrainingArguments(
+        do_train=True,
+        output_dir=model.ckpt_dir,
+        # disable any report_to callbacks
+        report_to="none",
+        # keep all values output from the dataset
+        remove_unused_columns=False,
+        ddp_find_unused_parameters=False,
+        # keep the progress callback
+        disable_tqdm=False,
+        logging_nan_inf_filter=False,
+        # align trainingarguments.device to our config.device
+        device_index=config.device,
+        per_device_train_batch_size=config.batch_size,
+        seed=config.seed,
+        num_train_epochs=config.epoch,
+        dataloader_num_workers=config.num_worker,
+        max_steps=config.get("max_step", 0),
+        fp16=config.fp16,
+        gradient_accumulation_steps=config.accumulate_step,
+        eval_delay=config.eval_delay,
+        eval_steps=config.eval_step,
+        save_at_eval=config.save_at_eval,
+        learning_rate=config.learning_rate,
+        adam_beta1=config.adam_beta1,
+        adam_beta2=config.adam_beta2,
+        adam_epsilon=config.adam_epsilon,
+        weight_decay=config.weight_decay,
+        max_grad_norm=config.max_grad_norm,
+        lr_scheduler_type=config.scheduler,
+        warmup_ratio=config.warmup_ratio,
+        warmup_steps=config.warmup_steps,
+        metric_for_best_model=config.main_metric
+    )
 
-
-    def _set_plm(self, plm:Optional[str]=None, already_on_main_proc=False):
-        """
-        Load plm and plm related parameters; download plm there isn't one. One may add a new plm into the ``plm_map`` object so that Manager knows how to
-        download it (``load_name``) and where to store it cache files (``tokenizer``).
-
-        Attributes:
-            special_token_ids(Dict[Tuple]): stores the token and token_id of each special tokens
-        """
-        if plm is None:
-            plm = self.config.plm
-
-        self.logger.info(f"loading {plm} as PLM...")
-
-        plm_map = {
-            "bert": {
-                # different model may share the same tokenizer, so we can load the same tokenized data for them
-                "tokenizer": "bert",
-                "load_name": "bert-base-uncased"
-            },
-            "distilbert": {
-                "tokenizer": "bert",
-                "load_name": "distilbert-base-uncased",
-            },
-            "ernie": {
-                "tokenizer": "bert",
-                "load_name": "nghuyong/ernie-2.0-en"
-            },
-            "bert-chinese": {
-                "tokenizer": "bert-chinese",
-                "load_name": "bert-base-chinese"
-            },
-            "bert-xingshi": {
-                "tokenizer": "bert-xingshi",
-                "load_name": "null"
-            },
-            "t5-small": {
-                "tokenizer": "t5",
-                "load_name": "t5-small"
-            },
-            "t5": {
-                "tokenizer": "t5",
-                "load_name": "t5-base"
-            },
-            "doct5": {
-                "tokenizer": "t5",
-                "load_name": "castorini/doc2query-t5-base-msmarco"
-            },
-            "distilsplade": {
-                "tokenizer": "bert",
-                "load_name": "null"
-            },
-            "splade": {
-                "tokenizer": "bert",
-                "load_name": "null"
-            },
-            "bart": {
-                "tokenizer": "bart",
-                "load_name": "facebook/bart-base"
-            },
-            "retromae": {
-                "tokenizer": "bert",
-                "load_name": "Shitao/RetroMAE"
-            },
-            "retromae_msmarco": {
-                "tokenizer": "bert",
-                "load_name": "Shitao/RetroMAE_MSMARCO"
-            },
-            "retromae_distill": {
-                "tokenizer": "bert",
-                "load_name": "Shitao/RetroMAE_MSMARCO_distill"
-            },
-            "deberta": {
-                "tokenizer": "deberta",
-                "load_name": "microsoft/deberta-base"
-            },
-        }
-
-        self.config.plm_dir = os.path.join(self.config.plm_root, plm)
-        self.config.plm_tokenizer = plm_map[plm]["tokenizer"]
-
-        # download plm once
-        if self.config.is_main_proc and not os.path.exists(os.path.join(self.config.plm_dir, "pytorch_model.bin")):
-            self.logger.info("downloading PLMs...")
-            os.makedirs(self.config.plm_dir, exist_ok=True)
-            tokenizer = AutoTokenizer.from_pretrained(plm_map[plm]["load_name"])
-            tokenizer.save_pretrained(self.config.plm_dir)
-            model = AutoModel.from_pretrained(plm_map[plm]["load_name"])
-            model.save_pretrained(self.config.plm_dir)
-        if not already_on_main_proc:
-            synchronize()
-
-        tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
-        # otherwise transofrmers library throws an error logging for some plm that lacks some special token
-        with all_logging_disabled():
-            self.config.special_token_ids = {
-                "cls": (tokenizer.cls_token, tokenizer.cls_token_id),
-                "pad": (tokenizer.pad_token, tokenizer.pad_token_id),
-                "unk": (tokenizer.unk_token, tokenizer.unk_token_id),
-                "sep": (tokenizer.sep_token if tokenizer.sep_token is not None else tokenizer.eos_token, tokenizer.sep_token_id if tokenizer.sep_token_id is not None else tokenizer.eos_token_id),
-            }
-        self.config.vocab_size = tokenizer.vocab_size
-        del tokenizer
-        # map text_col_sep to special_token if applicable
-        self.config.text_col_sep = self.config.special_token_ids[self.config.text_col_sep][0] if self.config.text_col_sep in self.config.special_token_ids else self.config.text_col_sep
-
-
-    def setup(self, config:OmegaConf):
-        """
-        Initialize config object from the OmegaConf from hydra (flatten it by :func:`utils.util.flatten_dict`); add some dataset-specific or mode-specific config customization.
-
-        Args:
-            config: parsed by hydra from command line, the available configs are in the data/config directory
-        """
-        from utils.index import ANSERINI_INDEX_MAP
-
-        # the inner config group is override by the outer config
-        config = update_hydra_config(OmegaConf.to_container(config))
-        if "extra" in config:
-            self.logger.info(f"Unexpected config: {config['extra']}")
-        # remove unnecessary configs for running
-        if "train" in config and config["base"]["mode"] != "train":
-            del config["train"]
-        # flatten the config object
-        config = Config(**flatten_hydra_config(config))
-
-        # post initialize
-        config.cache_root = os.path.join("data", "cache", config.dataset)
-
-        if config.mode not in ["train", "script"] and config.load_ckpt is None:
-            config.load_ckpt = "best"
-        if config.mode in ["encode", "encode-query", "encode-text"]:
-            config.save_encode = True
-
-        if config.mode == "train":
-            if config.debug:
-                config.eval_step = 10
-                config.eval_delay = 0
-
-        # some awkward dataset specific setting
-        # TODO: use hydra optional config
-        if config.dataset == "LECARD":
-            if config.get("index_type") in ANSERINI_INDEX_MAP:
-                config.language = "zh"
-            if config.get("eval_metric"):
-                config.eval_metric = "mrr,map,precision,ndcg".split(",")
-                config.eval_metric_cutoff = [5, 10, 20, 30]
-        elif config.dataset in ["NQ", "NQ-url"]:
-            if config.get("eval_metric"):
-                config.eval_metric_cutoff = [1, 5, 10, 100, 1000]
-            if config.get("index_type") in ANSERINI_INDEX_MAP:
-                config.k1 = 1.5
-                config.b = 0.75
-        elif config.dataset == "NQ-open":
-            if config.get("main_metric"):
-                config.main_metric = "Recall@10"
-        elif config.dataset == "MSMARCO-passage":
-            if config.expand_title:
-                config.text_col = [1, 2]
-
-        # convert the dictionary to a Config object that supports dot access
-        self.config = config
-
-        self.logger.info(f"Config: {self.config}")
-        self._set_seed()
-        self._set_plm()
-
-
-    def cleanup(self):
-        """
-        Destropy the process group of distrbution.
-        """
-        if self.config.is_distributed:
-            dist.destroy_process_group()
-        else:
-            pass
-
-
-    def prepare(self) -> LOADERS:
-        """
-        Prepare dataloader for training/evaluating.
-
-        Returns:
-            dict[str, DataLoader]:
-
-                train: dataloader for trianing; including neg/triple/triple-raw...
-
-                text: dataloader for text corpus if ``config.loader_text`` is not ``none``;
-
-                query: dataloader for query in ``eval_set`` if ``config.loader_eval`` is ``retrieve``;
-
-                rerank: dataloader for rerank if ``config.loader_eval`` is ``rerank``;
-
-        """
-        loaders = {}
-
-        if self.config.loader_text != "none":
-            dataset_passage = TextDataset(self.config, self.config.loader_text)
-            if self.config.parallel == "text":
-                sampler_passage = Sequential_Sampler(len(dataset_passage), num_replicas=self.config.world_size, rank=self.config.rank)
-            else:
-                sampler_passage = Sequential_Sampler(len(dataset_passage), num_replicas=1, rank=0)
-            loaders["text"] = DataLoader(dataset_passage, batch_size=self.config.eval_batch_size, sampler=sampler_passage, num_workers=self.config.num_worker, collate_fn=default_collate)
-
-        if self.config.loader_query != "none":
-            dataset_query = QueryDataset(self.config, mode=self.config.eval_set, data_format=self.config.loader_query)
-            if self.config.parallel == "query":
-                sampler_query = Sequential_Sampler(len(dataset_query), num_replicas=self.config.world_size, rank=self.config.rank)
-            else:
-                sampler_query = Sequential_Sampler(len(dataset_query), num_replicas=1, rank=0)
-            loaders["query"] = DataLoader(dataset_query, batch_size=self.config.eval_batch_size, sampler=sampler_query, num_workers=self.config.num_worker, collate_fn=default_collate)
-
-        if self.config.get("loader_rerank") != "none":
-            dataset_rerank = PairDataset(self.config, self.config.eval_set, data_format=self.config.loader_rerank)
-            sampler_rerank = Sequential_Sampler(len(dataset_rerank), num_replicas=self.config.world_size, rank=self.config.rank)
-            loaders["rerank"] = DataLoader(dataset_rerank, batch_size=self.config.eval_batch_size, sampler=sampler_rerank, num_workers=self.config.num_worker, collate_fn=default_collate)
-
-        # import psutil
-        # memory_consumption = round(psutil.Process().memory_info().rss / 1e6)
-        # self.logger.info(f"Memory Usage of Curren Process is {memory_consumption} MB!")
-
-        return loaders
-
-
-    def prepare_train_data(self, return_dataloader=False):
-        if self.config.get("loader_train") == "neg":
-            train_dataset = TrainDataset(self.config)
-        elif self.config.get("loader_train") == "neg-raw":
-            train_dataset = TrainDataset(self.config, data_format="raw")
-        elif self.config.get("loader_train") == "triple-raw":
-            train_dataset = RawTripleTrainDataset(self.config)
-        elif self.config.get("loader_train") == "pair":
-            train_dataset = PairDataset(self.config, mode="train")
-        elif self.config.get("loader_train") == "pair-memmap":
-            train_dataset = PairDataset(self.config, mode="train", data_format="memmap")
-        elif self.config.get("loader_train") == "nmt":
-            train_dataset = NMTTrainDataset(self.config)
-
-        # only used in developing (dev.ipynb)
-        if return_dataloader:
-            train_loader = DataLoader(train_dataset, batch_size=self.config.batch_size, collate_fn=default_collate)
-            return train_loader
-
-        return train_dataset
-
-
-    def train(self, model, loaders):
-        """
-        train the model
-
-        Args:
-            model
-            loaders: returned by :func:`~utils.manager.Manager.prepare`
-        """
-        # training dataloaders
-        train_dataset = self.prepare_train_data()
-
-        args = AdonTrainingArguments(
-            do_train=True,
-            output_dir=model.ckpt_dir,
-            # disable any report_to callbacks
-            report_to="none",
-            # keep all values output from the dataset
-            remove_unused_columns=False,
-            ddp_find_unused_parameters=False,
-            # keep the progress callback
-            disable_tqdm=False,
-            logging_nan_inf_filter=False,
-            # align trainingarguments.device to our config.device
-            device_index=self.config.device,
-            per_device_train_batch_size=self.config.batch_size,
-            seed=self.config.seed,
-            num_train_epochs=self.config.epoch,
-            dataloader_num_workers=self.config.num_worker,
-            max_steps=self.config.get("total_step", 0),
-            fp16=self.config.fp16,
-            gradient_accumulation_steps=self.config.accumulate_step,
-            eval_delay=self.config.eval_delay,
-            eval_steps=self.config.eval_step,
-            save_at_eval=self.config.save_at_eval,
-            learning_rate=self.config.learning_rate,
-            adam_beta1=self.config.adam_beta1,
-            adam_beta2=self.config.adam_beta2,
-            adam_epsilon=self.config.adam_epsilon,
-            max_grad_norm=self.config.max_grad_norm,
-            lr_scheduler_type=self.config.scheduler,
-            warmup_ratio=self.config.warmup_ratio,
-            warmup_steps=self.config.warmup_steps,
-            metric_for_best_model=self.config.main_metric
-        )
-
-        trainer = AdonTrainer(
-            model=model,
-            args=args,
-            train_dataset=train_dataset,
-            data_collator=default_collate,
-            loaders=loaders
-        )
-        trainer.remove_callback(DefaultFlowCallback)
-        trainer.remove_callback(ProgressCallback)
-        trainer.add_callback(AdonFlowCallback)
-        trainer.add_callback(AdonProgressCallback)
-        trainer.train()
+    trainer = AdonTrainer(
+        model=model,
+        args=args,
+        train_dataset=train_dataset,
+        data_collator=default_collate,
+        loaders=loaders
+    )
+    trainer.remove_callback(DefaultFlowCallback)
+    trainer.remove_callback(ProgressCallback)
+    trainer.add_callback(AdonFlowCallback)
+    trainer.add_callback(AdonProgressCallback)
+    trainer.train()
 
 
 @dataclass
@@ -589,6 +299,12 @@ class AdonTrainer(Trainer):
             self.optimizer = optimizer
         return self.optimizer
 
+    def _prepare_inputs(self, inputs):
+        """
+        Disable trainer to convert data to specific device.
+        """
+        return inputs
+
     def compute_loss(self, model, inputs, return_outputs=False):
         loss = model(inputs)
         return (loss, None) if return_outputs else loss
@@ -598,6 +314,8 @@ class AdonTrainer(Trainer):
             # neat printing
             print()
 
+        # release cache
+        self._memory_tracker.start()
         metrics = self.model.evaluate(self.loaders, log=False)
 
         if self.state.is_world_process_zero:
@@ -619,6 +337,9 @@ class AdonTrainer(Trainer):
 
         # very important to set it back; otherwise the evaluate function may be called twice at epoch end
         self.control.should_evaluate = False
+        # release cache
+        self._memory_tracker.stop_and_update_metrics()
+
 
     def _inner_training_loop(
         self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
@@ -994,6 +715,4 @@ class AdonTrainer(Trainer):
         logger.info(f"Best Metrics: {self.model.metrics}")
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
-
-
 

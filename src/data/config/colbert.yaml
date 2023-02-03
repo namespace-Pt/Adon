@@ -16,8 +16,4 @@ model:
   token_dim: 128
 
 train:
-  batch_size: 128
   learning_rate: 3e-5
-
-eval:
-  eval_batch_size: 500

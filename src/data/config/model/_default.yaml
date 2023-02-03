@@ -21,3 +21,6 @@ save_score: False
 
 # return token_type_ids from PLM tokenizer?
 return_type_id: False
+
+# separate query and document encoder?
+untie_encoder: false

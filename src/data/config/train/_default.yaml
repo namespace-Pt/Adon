@@ -30,11 +30,11 @@ warmup_ratio: 0.1
 warmup_steps: 0
 max_grad_norm: 0
 
-# training objective
-objective: contra
-distill_src: none
-distill_type: bi
 
-enable_inbatch_negative: True
+enable_inbatch_negative: true
 # if true, gather all the embeddings across processes in distributed training
-enable_all_gather: True
+enable_all_gather: true
+
+# distillation
+enable_distill: false
+distill_src: none

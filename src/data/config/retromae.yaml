@@ -12,14 +12,12 @@ defaults:
 base:
   mode: eval
 
-  plm: retromae
-  expand_title: True
+  plm: retromae_distill
+  text_col: [1, 2]
   text_length: 140
 
 model:
   model_type: dpr
-  load_encode: true
-  untie_encoder: false
 
 index:
   index_type: Flat

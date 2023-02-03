@@ -1,15 +1,14 @@
 import os
 import sys
 from collections import defaultdict
-from utils.manager import Manager
-from utils.util import save_pickle, load_pickle, makedirs
+from utils.util import save_pickle, load_pickle, makedirs, Config
 
 import hydra
 from omegaconf import OmegaConf
 from pathlib import Path
 @hydra.main(version_base=None, config_path="../data/config/", config_name=f"script/{Path(__file__).stem}")
-def get_config(config: OmegaConf):
-    manager.setup(config)
+def get_config(hydra_config: OmegaConf):
+    config._from_hydra(hydra_config)
 
 
 if __name__ == "__main__":
@@ -18,9 +17,9 @@ if __name__ == "__main__":
         if "=" not in arg:
             sys.argv[i] += "=true"
 
-    manager = Manager()
+
+    config = Config()
     get_config()
-    config = manager.config
 
     if os.path.exists(config.x_model):
         x_path = config.x_model

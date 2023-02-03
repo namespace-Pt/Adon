@@ -3,15 +3,15 @@ import sys
 import numpy as np
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from utils.manager import Manager
-from utils.util import load_pickle, save_pickle
+from utils.util import load_pickle, save_pickle, Config
+from utils.data import prepare_data
 
 import hydra
 from pathlib import Path
 from omegaconf import OmegaConf
 @hydra.main(version_base=None, config_path="../data/config/", config_name=f"script/{Path(__file__).stem}")
-def get_config(config: OmegaConf):
-    manager.setup(config)
+def get_config(hydra_config: OmegaConf):
+    config._from_hydra(hydra_config)
 
 
 def compute_overlap(query_token_ids, text_token_ids, ground_truth, tokenizer, stop_token_ids=None):
@@ -43,10 +43,9 @@ if __name__ == "__main__":
         if "=" not in arg:
             sys.argv[i] += "=true"
 
-    manager = Manager()
+    config = Config()
     get_config()
-    config = manager.config
-    loaders = manager.prepare()
+    loaders = prepare_data(config)
     dataset_text = loaders["text"].dataset
     dataset_query = loaders["query"].dataset
 

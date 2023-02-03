@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from transformers import AutoModel
 from .BaseModel import BaseSparseModel
+from transformers import AutoModel
 
 
 
@@ -9,13 +9,9 @@ class COIL(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
 
-        plm = AutoModel.from_pretrained(config.plm_dir)
-        # pooler will not receive any gradient in training, which may trigger a DDP error
-        if hasattr(plm, "pooler"):
-            plm.pooler = None
-        self.plm = plm
+        self._set_encoder()
 
-        self.tokenProject = nn.Linear(self.plm.config.hidden_size, config.token_dim)
+        self.tokenProject = nn.Linear(self.textEncoder.config.hidden_size, config.token_dim)
 
         self._output_dim = config.token_dim
         self._is_bow = False
@@ -27,13 +23,13 @@ class COIL(BaseSparseModel):
             if v.dim() == 3:
                 kwargs[k] = v.view(-1, v.shape[-1])
 
-        token_all_embedding = self.plm(**kwargs)[0]
+        token_all_embedding = self.textEncoder(**kwargs)[0]
         token_embedding = self.tokenProject(token_all_embedding)
         return token_embedding
 
 
     def _encode_query(self, **kwargs):
-        token_all_embedding = self.plm(**kwargs)[0]
+        token_all_embedding = self.queryEncoder(**kwargs)[0]
         token_embedding = self.tokenProject(token_all_embedding)
         return token_embedding
 
@@ -70,6 +66,7 @@ class COIL(BaseSparseModel):
         if self.config.enable_inbatch_negative:
             label = torch.arange(B, device=self.config.device)
             label = label * (text_token_embedding.shape[0] // query_token_embedding.shape[0])
+
         else:
             label = torch.zeros(B, dtype=torch.long, device=self.config.device)
             score = score.view(B, B, -1)[range(B), range(B)]    # B, 1+N
@@ -83,6 +80,7 @@ class COIL(BaseSparseModel):
         text = self._move_to_device(x["text"])
         text_token_id = text["input_ids"]
         text_token_embedding = self._encode_text(**text)
+        text_token_embedding *= text["attention_mask"].unsqueeze(-1)
         return text_token_id.cpu().numpy(), text_token_embedding.cpu().numpy()
 
 
@@ -91,6 +89,7 @@ class COIL(BaseSparseModel):
         query = self._move_to_device(x["query"])
         query_token_id = query["input_ids"]
         query_token_embedding = self._encode_query(**query)
+        query_token_embedding *= query["attention_mask"].unsqueeze(-1)
         return query_token_id.cpu().numpy(), query_token_embedding.cpu().numpy()
 
 

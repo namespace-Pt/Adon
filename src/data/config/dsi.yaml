@@ -15,11 +15,11 @@ base:
 model:
   model_type: dsi
 
-  code_type: DPR-hn-hier
+  code_type: ANCE-hier
   code_length: 10
-  code_size: 10
+  code_size: 100
 
-  nbeams: 10
+  nbeam: 10
   return_code: True
 
 index:
@@ -29,6 +29,7 @@ train:
   learning_rate: 1e-3
   scheduler: linear
   batch_size: 100
+  eval_delay: 20e
 
 eval:
   parallel: query

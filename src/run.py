@@ -1,91 +1,81 @@
 import sys
 import hydra
-import subprocess
 from omegaconf import OmegaConf
-from hydra.core.hydra_config import HydraConfig
-
-from utils.manager import Manager
+from utils.util import Config
+from utils.trainer import train
+from utils.data import prepare_data
 from models.AutoModel import MODEL_MAP
 
-import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 name = None
 
 @hydra.main(version_base=None, config_path="data/config/")
-def get_config(config: OmegaConf):
-    manager.setup(config)
-    manager.config.name = name
-    manager.logger.info(f"using model {name}...")
+def get_config(hydra_config: OmegaConf):
+    config._from_hydra(hydra_config)
+    config.name = name
+    config.logger.info(f"using model {name}...")
 
 
-def main(manager:Manager):
+def main(config:Config):
     """ train/dev/test the model (in distributed)
 
     Args:
         rank: current process id
         world_size: total gpus
     """
-    model = MODEL_MAP[manager.config.model_type](manager.config).to(manager.config.device)
+    model = MODEL_MAP[config.model_type](config).to(config.device)
 
-    loaders = manager.prepare()
+    loaders = prepare_data(config)
 
-    if manager.config.mode == "train":
+    if config.mode == "train":
         model.load()
-        manager.train(model, loaders)
+        train(model, loaders)
 
-    elif manager.config.mode == "eval":
+    elif config.mode == "eval":
         model.load()
         model.evaluate(loaders)
 
-    elif manager.config.mode == "encode":
+    elif config.mode == "encode":
         model.load()
         model.encode(loaders)
 
-    elif manager.config.mode == "encode-text":
+    elif config.mode == "encode-text":
         model.load()
         model.encode_text(loaders["text"])
 
-    elif manager.config.mode == "encode-query":
+    elif config.mode == "encode-query":
         model.load()
         model.encode_query(loaders["query"])
 
-    elif manager.config.mode == "flops":
-        model.load()
-        text_output = model.encode_text(loaders["text"])
-        query_output = model.encode_query(loaders["query"])
-        model.compute_flops(loaders, text_output.token_ids, text_output.embeddings, query_output.token_ids, query_output.embeddings, log=True)
-
-    elif manager.config.mode == "cluster":
+    elif config.mode == "cluster":
         model.load()
         model.cluster(loaders)
 
-    elif manager.config.mode == "code":
+    elif config.mode == "code":
         model.load()
         model.generate_code(loaders)
 
-    elif manager.config.mode == "migrate":
+    elif config.mode == "migrate":
         from utils.util import load_from_previous
-        if manager.config.is_main_proc:
-            path = f"{manager.config.cache_root}/ckpts/{model.name}/{manager.config.load_ckpt}"
+        if config.is_main_proc:
+            path = f"{config.cache_root}/ckpts/{model.name}/{config.load_ckpt}"
             load_from_previous(model, path)
             model.save()
 
-    elif manager.config.mode == "deploy":
+    elif config.mode == "deploy":
         model.load()
         model.deploy()
 
-    elif manager.config.mode == "index":
+    elif config.mode == "index":
         model.load()
         model.index(loaders)
 
     else:
-        raise ValueError(f"Invalid mode {manager.config.mode}!")
+        raise ValueError(f"Invalid mode {config.mode}!")
 
-    if manager.config.save_model:
+    if config.save_model:
         model.save()
 
-    manager.cleanup()
 
 
 if __name__ == "__main__":
@@ -102,7 +92,7 @@ if __name__ == "__main__":
         if i > 2 and "=" not in arg:
             sys.argv[i] += "=true"
 
-    manager = Manager()
+    config = Config()
     get_config()
 
-    main(manager)
+    main(config)

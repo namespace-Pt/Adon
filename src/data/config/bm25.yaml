@@ -14,6 +14,10 @@ base:
 
 model:
   model_type: bm25
+  save_encode: true
 
 index:
   pretokenize: false
+
+eval:
+  eval_batch_size: 1

@@ -9,7 +9,7 @@ class UniCOIL(COIL):
         config.token_dim = 1
         super().__init__(config)
 
-        plm_dim = self.plm.config.hidden_size
+        plm_dim = self.textEncoder.config.hidden_size
         self.tokenProject = nn.Sequential(
             nn.Linear(plm_dim, plm_dim),
             nn.ReLU(),
@@ -44,25 +44,27 @@ class UniCOIL(COIL):
 
     def encode_text_step(self, x):
         text = self._move_to_device(x["text"])
-        text_token_embedding = self._encode_text(**text)
-        text_bow = self._to_bow(text["input_ids"], text_token_embedding)
+        text_token_id = text["input_ids"]
 
-        text_first_mask = self._move_to_device(x["text_first_mask"])
-        # mask the duplicated tokens and special tokens
-        valid_token_ids = text["input_ids"].masked_fill(~text_first_mask, 0)
-        valid_token_weights = text_bow.gather(index=valid_token_ids, dim=-1).unsqueeze(-1)
+        text_token_embedding = self._encode_text(**text)
+        text_bow = self._to_bow(text_token_id, text_token_embedding)
+
+        text_token_weight = text_bow.gather(index=text_token_id, dim=-1)
+
+        if "text_first_mask" in x:
+            # mask the duplicated tokens' weight
+            text_first_mask = self._move_to_device(x["text_first_mask"])
+            text_token_weight = text_token_weight.masked_fill(~text_first_mask, 0)
         # unsqueeze to map it to the _output_dim (1)
-        return valid_token_ids.cpu().numpy(), valid_token_weights.cpu().numpy()
+        return text_token_id.cpu().numpy(), text_token_weight.unsqueeze(-1).cpu().numpy()
 
 
     def encode_query_step(self, x):
         query = self._move_to_device(x["query"])
-        query_token_embedding = self._encode_text(**query)
-        query_bow = self._to_bow(query["input_ids"], query_token_embedding)
+        query_token_id = query["input_ids"]
 
-        query_first_mask = self._move_to_device(x["query_first_mask"])
-        # mask the duplicated tokens and special tokens
-        valid_token_ids = query["input_ids"].masked_fill(~query_first_mask, 0)
-        valid_token_weights = query_bow.gather(index=valid_token_ids, dim=-1).unsqueeze(-1)
+        query_token_weight = self._encode_query(**query)
+        query_token_weight *= query["attention_mask"].unsqueeze(-1)
+
         # unsqueeze to map it to the _output_dim (1)
-        return valid_token_ids.cpu().numpy(), valid_token_weights.cpu().numpy()
+        return query_token_id.cpu().numpy(), query_token_weight.cpu().numpy()

@@ -14,7 +14,6 @@ base:
 
 model:
   model_type: dpr
-  untie_encoder: false
 
 index:
   index_type: Flat

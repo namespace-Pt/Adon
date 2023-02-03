@@ -14,7 +14,6 @@ base:
 
 model:
   model_type: unicoil
-  return_first_mask: True
   return_sep_mask: True
 
 train:

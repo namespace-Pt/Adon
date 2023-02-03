@@ -71,7 +71,7 @@ class CrossEncoder(BaseModel):
 
     def forward(self, x):
         pair = x["pair"]
-        score = self.compute_score(x) # B*(1+N)
+        score = self.rerank_step(x) # B*(1+N)
 
         if pair["input_ids"].dim() == 3:
             # use cross entropy loss

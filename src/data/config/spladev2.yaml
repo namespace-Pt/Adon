@@ -20,6 +20,10 @@ model:
   text_decode_k: 256
   query_decode_k: 64
 
+index:
+  bow_state: is
+  return_first_mask: false
+
 train:
   batch_size: 64
   learning_rate: 2e-5

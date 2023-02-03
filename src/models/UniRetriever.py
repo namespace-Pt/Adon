@@ -10,25 +10,39 @@ class UniRetriever(BaseModel):
         super().__init__(config)
 
         if config.x_model != "none":
-            XModel = AM.from_pretrained(os.path.join(config.cache_root, "ckpts", config.x_model, config.x_load_ckpt), device=config.get("x_device", config.device))
-            # set load_encode, load_posting etc.
+            additional_kwargs = {
+                "data_root": config.data_root,
+                "plm_root": config.plm_root,
+                "text_col": config.text_col,
+                "device": config.get("x_device", config.device),
+                "verifier_type": config.verifier_type,
+                "verifier_src": config.verifier_src,
+                "verifier_index": config.verifier_index
+            }
             for k,v in config.items():
                 if k.startswith("x_") and k != "x_model":
-                    setattr(XModel.config, k[2:], v)
-            XModel.config.verifier_type = config.verifier_type
-            XModel.config.verifier_src = config.verifier_src
-            XModel.config.verifier_index = config.verifier_index
+                    additional_kwargs[k[2:]] = v
+
+            XModel = AM.from_pretrained(os.path.join(config.cache_root, "ckpts", config.x_model, config.x_load_ckpt), **additional_kwargs)
         else:
             XModel = None
 
         if config.y_model != "none":
-            YModel = AM.from_pretrained(os.path.join(config.cache_root, "ckpts", config.y_model, config.y_load_ckpt), device=config.get("y_device", config.device))
+            additional_kwargs = {
+                "data_root": config.data_root,
+                "plm_root": config.plm_root,
+                "text_col": config.text_col,
+                "device": config.get("y_device", config.device),
+                "verifier_type": config.verifier_type,
+                "verifier_src": config.verifier_src,
+                "verifier_index": config.verifier_index
+            }
             for k,v in config.items():
                 if k.startswith("y_") and k != "y_model":
-                    setattr(YModel.config, k[2:], v)
-            YModel.config.verifier_type = config.verifier_type
-            YModel.config.verifier_src = config.verifier_src
-            YModel.config.verifier_index = config.verifier_index
+                    additional_kwargs[k[2:]] = v
+
+            YModel = AM.from_pretrained(os.path.join(config.cache_root, "ckpts", config.y_model, config.y_load_ckpt), **additional_kwargs)
+
         else:
             YModel = None
 
@@ -53,6 +67,13 @@ class UniRetriever(BaseModel):
             self.metrics.update({f"Y {k}": v for k, v in self.YModel.metrics.items() if k in ["Posting_List_Length"]})
         else:
             y_retrieval_result = {}
+
+        try:
+            posting_length = self.metrics["X Posting_List_Length"] + self.metrics["Y Posting_List_Length"]
+            flops = round((posting_length) * 48 / len(loaders["text"].dataset), 2)
+            self.metrics.update({"Posting_List_length": posting_length, "FLOPs": flops})
+        except:
+            pass
 
         if self.config.get("save_intm_result"):
             self.XModel._gather_retrieval_result(

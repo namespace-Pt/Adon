@@ -7,7 +7,7 @@ from collections import defaultdict
 from .BaseModel import BaseSparseModel
 from transformers import AutoTokenizer
 from utils.typings import *
-from utils.util import BaseOutput, synchronize
+from utils.util import BaseOutput, synchronize, save_pickle
 
 
 
@@ -15,17 +15,18 @@ class BM25(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
+        self.special_token_ids = set([x[1] for x in config.special_token_ids.values()])
 
         if self.config.pretokenize:
-            self.index_dir = os.path.join(config.cache_root, "index", self.name, "pretokenize", "index")
-            self.collection_dir = os.path.join(config.cache_root, "index", self.name, "pretokenize", "collection")
+            self.index_dir = os.path.join(config.cache_root, "index", self.name, "pretokenize")
         elif self.config.get("return_code"):
-            self.index_dir = os.path.join(config.cache_root, "index", self.name, config.code_type, "index")
-            self.collection_dir = os.path.join(config.cache_root, "index", self.name, config.code_type, "collection")
+            self.index_dir = os.path.join(config.cache_root, "index", self.name, config.code_type)
 
 
+    @synchronize
     def encode_text(self, loader_text: DataLoader, load_all_encode: bool = False):
         if self.config.pretokenize:
+            text_token_id_path = os.path.join(self.encode_dir, "text_token_ids.mmp")
             text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
 
             if load_all_encode:
@@ -33,46 +34,66 @@ class BM25(BaseSparseModel):
                     text_embedding_path,
                     mode="r",
                     dtype=np.float32
-                ).reshape(len(loader_text.dataset), self.config.text_length, 1).copy()
-                text_token_ids = loader_text.dataset.text_token_ids[:, :self.config.text_length].copy()
+                ).reshape(len(loader_text.dataset), self._text_length, self._output_dim).copy()
+                text_token_ids = np.memmap(
+                    text_token_id_path,
+                    mode="r",
+                    dtype=np.int32
+                ).reshape(len(loader_text.dataset), self._text_length)
 
             elif self.config.load_encode:
                 text_embeddings = np.memmap(
                     text_embedding_path,
                     mode="r",
                     dtype=np.float32
-                ).reshape(len(loader_text.dataset), self.config.text_length, 1)[loader_text.sampler.start: loader_text.sampler.end].copy()
-                text_token_ids = loader_text.dataset.text_token_ids[loader_text.sampler.start: loader_text.sampler.end, :self.config.text_length].copy()
+                ).reshape(len(loader_text.dataset), self._text_length, self._output_dim)[loader_text.sampler.start: loader_text.sampler.end].copy()
+                text_token_ids = np.memmap(
+                    text_token_id_path,
+                    mode="r",
+                    dtype=np.int32
+                ).reshape(len(loader_text.dataset), self._text_length)[loader_text.sampler.start: loader_text.sampler.end]
 
             else:
-                text_token_ids = loader_text.dataset.text_token_ids[loader_text.sampler.start: loader_text.sampler.end, :self.config.text_length].copy()
-                text_embeddings = np.zeros((len(loader_text.sampler), self.config.text_length, 1), dtype=np.float32)
+                assert self.config.eval_batch_size == 1, "Document Frequencies must be computed one by one!"
+                text_token_ids = np.zeros((len(loader_text.sampler), self._text_length), dtype=np.int32)
+                text_embeddings = np.zeros((len(loader_text.sampler), self._text_length, self._output_dim), dtype=np.float32)
                 self.logger.info(f"encoding {self.config.dataset} text...")
 
                 # counting df
                 df = defaultdict(int)
-                for i, x in enumerate(tqdm(loader_text.dataset, leave=False, ncols=100)):
-                    pos_text_token_id = x["pos_text_token_id"]
-                    pos_text_attn_mask = x["pos_text_attn_mask"]
-                    for j, token_id in enumerate(np.unique(pos_text_token_id)):
+                for i, x in enumerate(tqdm(loader_text, leave=False, ncols=100, desc="Collecting DFs")):
+                    text_token_id = x["text"]["input_ids"].squeeze(0).numpy()
+                    for j, token_id in enumerate(np.unique(text_token_id)):
                         df[token_id] += 1
                 df = dict(df)
 
-                for i, x in enumerate(tqdm(loader_text.dataset, leave=False, ncols=100)):
-                    pos_text_token_id = x["pos_text_token_id"]
-                    pos_text_attn_mask = x["pos_text_attn_mask"]
-                    length = pos_text_attn_mask.sum()
+                if self.config.is_distributed:
+                    all_dfs = self._gather_objects(df)
+                df = defaultdict(int)
+                for x in tqdm(all_dfs, desc="Merging DFs", ncols=100, leave=False):
+                    for k, v in x.items():
+                        df[k] += v
+                df = dict(df)
+
+                for i, x in enumerate(tqdm(loader_text, leave=False, ncols=100, desc="Computing TFIDFs")):
+                    text_token_id = x["text"]["input_ids"].squeeze(0).numpy()
+                    text_attn_mask = x["text"]["attention_mask"].squeeze(0).numpy()
+                    length = text_attn_mask.sum()
+
+                    text_token_ids[i] = text_token_id
 
                     tf = defaultdict(int)
-                    for j, token_id in enumerate(pos_text_token_id):
-                        if pos_text_attn_mask[j] == 0:
-                            break
+                    for j, token_id in enumerate(text_token_id):
+                        if token_id in self.special_token_ids:
+                            continue
                         tf[token_id] += 1 / length
+                    # force to assign 0 to pad token
+                    tf[self.tokenizer.pad_token_id] = 0
                     tf = dict(tf)
 
-                    for j, token_id in enumerate(pos_text_token_id):
-                        if pos_text_attn_mask[j] == 0:
-                            break
+                    for j, token_id in enumerate(text_token_id):
+                        if token_id in self.special_token_ids:
+                            continue
                         idf = np.log(len(loader_text.dataset) / (1 + df[token_id]))
                         tfidf = idf * tf[token_id]
                         # mask the negative tfidf score, which implies the document frequency of the token is bigger than the collection size
@@ -80,10 +101,21 @@ class BM25(BaseSparseModel):
                             tfidf = 0
                         text_embeddings[i, j, 0] = tfidf
 
+                    if "text_first_mask" in x:
+                        text_first_mask = x["text_first_mask"].squeeze(0).numpy().astype(np.bool)
+                        text_embeddings[i,:,0][~text_first_mask] = 0
+
                 if self.config.save_encode:
                     self.save_to_mmp(
+                        path=text_token_id_path,
+                        shape=(len(loader_text.dataset), self._text_length),
+                        dtype=np.int32,
+                        loader=loader_text,
+                        obj=text_token_ids
+                    )
+                    self.save_to_mmp(
                         path=text_embedding_path,
-                        shape=(len(loader_text.dataset), self.config.text_length, 1),
+                        shape=(len(loader_text.dataset), self._text_length, self._output_dim),
                         dtype=np.float32,
                         loader=loader_text,
                         obj=text_embeddings
@@ -93,13 +125,17 @@ class BM25(BaseSparseModel):
             return BaseOutput(embeddings=text_embeddings, token_ids=text_token_ids)
 
         elif self.config.get("return_code"):
-            text_codes = loader_text.dataset.text_codes[loader_text.sampler.start: loader_text.sampler.end].copy()
+            if load_all_encode:
+                text_codes = loader_text.dataset.text_codes.copy()
+            else:
+                text_codes = loader_text.dataset.text_codes[loader_text.sampler.start: loader_text.sampler.end].copy()
             return BaseOutput(token_ids=text_codes)
 
         else:
             return BaseOutput()
 
 
+    @synchronize
     def encode_query(self, loader_query: DataLoader, load_all_encode: bool = False):
         if self.config.pretokenize or self.config.get("return_code"):
             return super().encode_query(loader_query, load_all_encode)

@@ -34,7 +34,6 @@ class DistillVQ(BaseDenseModel):
                 ivf_index = faiss.downcast_index(index.index)
             else:
                 ivf_index = index
-            assert ivf_index.by_residual, "The IVF index should be encoded by residual!"
 
             quantizer = faiss.downcast_index(ivf_index.quantizer)
             ivf_centroids = FaissIndex.get_xb(quantizer)
@@ -42,10 +41,7 @@ class DistillVQ(BaseDenseModel):
 
             pq = ivf_index.pq
             pq_centroids = faiss.vector_to_array(pq.centroids).reshape(pq.M, pq.ksub, pq.dsub)
-            if config.freeze_pq:
-                self.register_buffer("pqCentroids", torch.tensor(pq_centroids))
-            else:
-                self.pqCentroids = nn.parameter.Parameter(torch.tensor(pq_centroids))
+            self.pqCentroids = nn.parameter.Parameter(torch.tensor(pq_centroids))
 
             invlists = ivf_index.invlists
             cs = invlists.code_size
@@ -74,8 +70,6 @@ class DistillVQ(BaseDenseModel):
             self.pqCentroids = nn.parameter.Parameter(torch.tensor(pq_centroids))
 
             pq_codes = faiss.vector_to_array(pq_index.codes).reshape(-1, pq.M)
-            pq_codes = torch.tensor(pq_codes)   # uint8 (64) or uint16
-
             self._pq_codes = pq_codes
 
         else:
@@ -142,7 +136,7 @@ class DistillVQ(BaseDenseModel):
             quantized_embedding = ivf_assign.matmul(self.ivfCentroids)
 
         else:
-            ivf_id = torch.as_tensor(self._ivf_codes[text_idx.numpy()], device=self.config.device, dtype=torch.long) # B
+            ivf_id = torch.as_tensor(self._ivf_codes[text_idx], device=self.config.device, dtype=torch.long) # B
             quantized_embedding = self.ivfCentroids[ivf_id]
 
         return quantized_embedding
@@ -174,7 +168,7 @@ class DistillVQ(BaseDenseModel):
             quantized_embedding = torch.matmul(pq_assign, codebook).view(B, -1)    # B, D
 
         else:
-            pq_id = torch.as_tensor(self._pq_codes[text_idx.numpy()], device=self.config.device, dtype=torch.long)
+            pq_id = torch.as_tensor(self._pq_codes[text_idx], device=self.config.device, dtype=torch.long)
             quantized_embedding = pq_quantize(pq_id, self.pqCentroids)
 
         return quantized_embedding
@@ -190,8 +184,8 @@ class DistillVQ(BaseDenseModel):
 
     def forward(self, x:dict) -> TENSOR:
         x = self._move_to_device(x)
-
         text_idx = x["text_idx"].view(-1).numpy()
+
         text_embedding = x["text_embedding"].flatten(0, 1)   # B*(1+N), D
 
         if self.config.train_encoder:
@@ -220,16 +214,16 @@ class DistillVQ(BaseDenseModel):
             text_ivf_quantization = self._gather_tensors(text_ivf_quantization)
             text_pq_quantization = self._gather_tensors(text_pq_quantization)
 
-        score_pq = query_embedding.matmul(text_pq_quantization.transpose(-1, -2))  # B, B*(1+N)
+        score_pq = rotate_query_embedding.matmul(text_pq_quantization.transpose(-1, -2))  # B, B*(1+N)
         if text_ivf_quantization is not None:
-            score_ivf = query_embedding.matmul(text_ivf_quantization.transpose(-1,-2))	# B, B*(1+N)
+            score_ivf = rotate_query_embedding.matmul(text_ivf_quantization.transpose(-1,-2))	# B, B*(1+N)
         if self.config.train_encoder:
-            score_dense = query_embedding.matmul(text_embedding.transpose(-1, -2)) # B, B*(1+N)
+            score_dense = rotate_query_embedding.matmul(rotate_text_embedding.transpose(-1, -2)) # B, B*(1+N)
 
-        B = query_embedding.size(0)
+        B = rotate_query_embedding.size(0)
         if self.config.enable_inbatch_negative:
             label = torch.arange(B, device=self.config.device)
-            label = label * (text_embedding.shape[0] // query_embedding.shape[0])
+            label = label * (rotate_text_embedding.size(0) // rotate_query_embedding.size(0))
         else:
             label = torch.zeros(B, dtype=torch.long, device=self.config.device)
             score_pq = score_pq.view(B, B, -1)[range(B), range(B)]    # B, 1+N
@@ -249,9 +243,10 @@ class DistillVQ(BaseDenseModel):
         else:
             loss_dense = 0
 
-        if text_ivf_quantization is not None:
-            # rescale the ivf loss
-            loss_ivf = loss_ivf * float(loss_pq / (loss_ivf + 1e-6))
+        # scale the ivf loss, it's usually way bigger than PQ's loss
+        # if text_ivf_quantization is not None:
+        #     # rescale the ivf loss
+        #     loss_ivf = loss_ivf * float(float(loss_pq) / (loss_ivf + 1e-6))
 
         return loss_pq + loss_ivf + loss_dense
 
@@ -260,7 +255,6 @@ class DistillVQ(BaseDenseModel):
     def encode_text(self, loader_text:DataLoader, load_all_encode:bool=False):
         if load_all_encode:
             text_embeddings = loader_text.dataset.text_embeddings
-            return BaseOutput(embeddings=text_embeddings)
         else:
             # create soft link to the embedding_src
             if self.config.is_main_proc and self.config.save_encode:
@@ -271,12 +265,11 @@ class DistillVQ(BaseDenseModel):
                 )
 
             text_embeddings = loader_text.dataset.text_embeddings[loader_text.sampler.start: loader_text.sampler.end]
-            return BaseOutput(embeddings=text_embeddings)
+        return BaseOutput(embeddings=text_embeddings)
 
 
     @torch.no_grad()
     def encode_query(self, loader_query:DataLoader, load_all_encode:bool=False):
-        self._synchronize()
         query_embedding_path = os.path.join(self.query_dir, "query_embeddings.mmp")
 
         if load_all_encode:
@@ -326,7 +319,8 @@ class DistillVQ(BaseDenseModel):
                     )
 
                 query_embeddings = loader_query.dataset.query_embeddings[loader_query.sampler.start: loader_query.sampler.end]
-            return BaseOutput(embeddings=query_embeddings)
+
+        return BaseOutput(embeddings=query_embeddings)
 
 
     def index(self, loaders:LOADERS):

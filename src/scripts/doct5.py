@@ -1,26 +1,23 @@
 import os
 import sys
+import torch
 import numpy as np
 from tqdm import tqdm
 from multiprocessing import Pool
 from transformers import T5ForConditionalGeneration, AutoTokenizer
-from utils.manager import Manager
-from utils.util import synchronize
-
-import torch
+from utils.util import synchronize, Config
+from utils.data import prepare_data
 
 import hydra
 from pathlib import Path
 from omegaconf import OmegaConf
 @hydra.main(version_base=None, config_path="../data/config/", config_name=f"script/{Path(__file__).stem}")
-def get_config(config: OmegaConf):
-    manager.setup(config)
+def get_config(hydra_config: OmegaConf):
+    config._from_hydra(hydra_config)
 
 
-def main(manager):
-    config = manager.config
-
-    loaders = manager.prepare()
+def main(config):
+    loaders = prepare_data(config)
     loader_text = loaders["text"]
 
     max_length = config.query_length
@@ -93,9 +90,9 @@ def main(manager):
         tokenize_thread = config.tokenize_thread
         all_line_count = len(loader_text.dataset)
 
-        manager._set_plm(already_on_main_proc=True)
+        config._set_plm(already_on_main_proc=True)
         tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
-        manager.logger.info("tokenizing {} in {} threads, output file will be saved at {}".format(doct5_path, tokenize_thread, cache_dir))
+        config.logger.info("tokenizing {} in {} threads, output file will be saved at {}".format(doct5_path, tokenize_thread, cache_dir))
 
         arguments = []
         # create memmap first
@@ -161,9 +158,7 @@ if __name__ == "__main__":
         if "=" not in arg:
             sys.argv[i] += "=true"
 
-    manager = Manager()
+    config = Config()
     get_config()
-
-    manager._set_plm("doct5")
-
-    main(manager)
+    config._set_plm("doct5")
+    main(config)

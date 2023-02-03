@@ -11,7 +11,7 @@ from tqdm import tqdm
 from typing import Optional, Mapping
 from pathlib import Path
 from collections import defaultdict
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModel
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 from utils.util import load_pickle, save_pickle, compute_metrics, compute_metrics_nq, makedirs, readlink, synchronize, BaseOutput, MasterLogger, Config
@@ -62,6 +62,22 @@ class BaseModel(nn.Module):
         self.logger = MasterLogger(self.name)
 
 
+    def _set_encoder(self):
+        if self.config.get("untie_encoder"):
+            self.queryEncoder = AutoModel.from_pretrained(self.config.plm_dir)
+            self.textEncoder = AutoModel.from_pretrained(self.config.plm_dir)
+
+        else:
+            plm = AutoModel.from_pretrained(self.config.plm_dir)
+            self.queryEncoder = plm
+            self.textEncoder = plm
+
+        if hasattr(self.queryEncoder, "pooler"):
+            self.queryEncoder.pooler = None
+            self.textEncoder.pooler = None
+
+
+
     def _move_to_device(self, data, exclude_keys=["text_idx", "query_idx"]):
         """
         Move data to device.
@@ -70,11 +86,18 @@ class BaseModel(nn.Module):
             exclude_keys: variables that should be kept unchanged
         """
         if isinstance(data, Mapping):
-            # move the value to device if its key is not exluded
-            return type(data)({k: self._move_to_device(v) if k not in exclude_keys else v for k, v in data.items()})
+            new_data = {}
+            for k, v in data.items():
+                if isinstance(v, torch.Tensor):
+                    if k not in exclude_keys:
+                        new_data[k] = v.to(device=self.config.device)
+                    else:
+                        new_data[k] = v
+                elif isinstance(v, Mapping):
+                    new_data[k] = self._move_to_device(v)
         elif isinstance(data, torch.Tensor):
             return data.to(device=self.config.device)
-        return data
+        return new_data
 
 
     def _l2_distance(self, x1:TENSOR, x2:TENSOR) -> TENSOR:
@@ -109,7 +132,7 @@ class BaseModel(nn.Module):
         """
         Compute teacher score in knowledge distillation; return None if training in contrastive mode.
         """
-        if self.config.objective == "kd":
+        if self.config.enable_distill:
             if "teacher_score" in x:
                 teacher_score = x["teacher_score"]  # B, 1+N
 
@@ -128,11 +151,8 @@ class BaseModel(nn.Module):
             else:
                 raise ValueError("At least teacher_score or query/text teacher embedding should be provided in knowledge distillation!")
 
-        elif self.config.objective == "contra":
-            teacher_score = None
-
         else:
-            raise NotImplementedError(f"Objective type {self.config.objective} not implemented!")
+            teacher_score = None
         return teacher_score
 
 
@@ -577,6 +597,7 @@ class BaseModel(nn.Module):
 
         if self.config.is_main_proc:
             save_dict = {}
+            # the distributed infomation will not be saved
             save_dict["config"] = self.config
             save_dict["model"] = model_dict
             save_dict["metrics"] = {k: v for k, v in self.metrics.items() if k != "_best"}
@@ -622,40 +643,6 @@ class BaseModel(nn.Module):
             self.logger.warning(f"Missing Keys: {missing_keys}")
         if len(unexpected_keys):
             self.logger.warning(f"Unexpected Keys: {unexpected_keys}")
-
-
-    @classmethod
-    def from_pretrained(cls, ckpt_path:str, **kwargs):
-        """
-        Load model and its config from ``ckpt_path``.
-
-        Args:
-            cls: the model class
-            ckpt_path: the path to the model checkpoint
-            device: the device to load the model
-
-        Returns:
-            the loaded model
-        """
-        state_dict = torch.load(ckpt_path, map_location="cpu")
-        config = Config(**state_dict["config"])
-
-        model_name_current = ckpt_path.split(os.sep)[-2]
-        model_name_ckpt = config.name
-        if model_name_ckpt != model_name_current:
-            model.logger.warning(f"model name in the checkpoint is {model_name_ckpt}, while it's {model_name_current} now!")
-
-        # override model name
-        config.update(**kwargs, name=model_name_current)
-
-        model = cls(config).to(config.device)
-
-        model.logger.info(f"loading model from {ckpt_path} with checkpoint config...")
-        model.load_state_dict(state_dict["model"])
-        model.metrics = state_dict["metrics"]
-
-        model.eval()
-        return model
 
 
     def generate_code(self, loaders):
@@ -711,8 +698,6 @@ class BaseSparseModel(BaseModel):
     """
     def __init__(self, config:Config):
         super().__init__(config)
-        self.collection_dir = os.path.join(self.index_dir, config.index_type, "collection")
-        self.index_dir = os.path.join(self.index_dir, config.index_type, "index")
 
         # add the following sparse-model-specific attributes to the config
         # set to true to rebuild the inverted index every time
@@ -723,15 +708,13 @@ class BaseSparseModel(BaseModel):
         self._output_dim = 1
         # posting list number, may be extended for latent topics
         self._posting_entry_num = self.config.vocab_size
-        # is bow or seq
-        self._is_bow = True
         # valid text length for indexing and searching
         self._text_length = self.config.text_length
         self._query_length = self.config.query_length
 
 
 
-    def _compute_overlap(self, query_token_id:TENSOR, text_token_id:TENSOR, cross_batch=True) -> TENSOR:
+    def _compute_overlap(self, query_token_id:TENSOR, text_token_id:TENSOR) -> TENSOR:
         """
         Compute overlapping mask between the query tokens and positive sequence tokens across batches.
 
@@ -742,39 +725,14 @@ class BaseSparseModel(BaseModel):
         Returns:
             overlapping_mask: [B, LQ, B, LS] if cross_batch, else [B, LQ, LS]
         """
-        if cross_batch:
-            query_token_id = query_token_id.unsqueeze(-1).unsqueeze(-1) # B, LQ, 1, 1
-            text_token_id = text_token_id.unsqueeze(0).unsqueeze(0)   # 1, 1, B, LS
-        else:
-            query_token_id = query_token_id.unsqueeze(-1)   # B, LQ, 1
-            seq_token_id = seq_token_id.unsqueeze(-2)   # B, 1, LS
+        query_token_id = query_token_id[..., None, None] # B, LQ, 1, 1
+        text_token_id = text_token_id[None, None, ...]   # 1, 1, B, LS
 
         overlapping_mask = text_token_id == query_token_id
         return overlapping_mask
 
 
-    def _gate_query(self, query_embeddings:np.ndarray, query_token_ids:np.ndarray, k:Optional[int]=None):
-        """
-        Gate the query token weights so that only the top ``config.query_gate_k`` tokens are valid. Moreover, change the gated token ids to -1.
-
-        Args:
-            query_embeddings: [N, L, 1]
-        """
-        if k is None:
-            k = self.config.query_gate_k
-        if k > 0 and k < query_token_ids.shape[-1]:
-            self.logger.info(f"gating query by {k}...")
-            assert query_embeddings.shape[-1] == 1
-            query_embeddings = query_embeddings.squeeze(-1)
-            non_topk_indices = np.argpartition(-query_embeddings, k)[:, k:]
-            np.put_along_axis(query_embeddings, non_topk_indices, values=0, axis=-1)
-            np.put_along_axis(query_token_ids, non_topk_indices, values=-1, axis=-1)
-            # append the last dimension
-            query_embeddings = np.expand_dims(query_embeddings, axis=-1)
-        return query_embeddings, query_token_ids
-
-
-    def _gate_text(self, text_embeddings:np.ndarray, k:Optional[int]=None):
+    def _gate_text(self, text_token_weights:np.ndarray, k:Optional[int]=None):
         """
         Gate the text token weights so that only the top ``config.query_gate_k`` tokens are valid. Keep the text_token_ids because we will use it to construct the entire inverted lists.
 
@@ -783,16 +741,18 @@ class BaseSparseModel(BaseModel):
         """
         if k is None:
             k = self.config.text_gate_k
-        if k > 0 and k < text_embeddings.shape[1]:
+        if k > 0 and k < text_token_weights.shape[1]:
+            # the original one is read-only
+            text_token_weights = text_token_weights.copy()
+
             self.logger.info(f"gating text by {k}...")
-            assert text_embeddings.shape[-1] == 1
-            text_embeddings = text_embeddings.squeeze(-1)
-            non_topk_indices = np.argpartition(-text_embeddings, k)[:, k:]
-            np.put_along_axis(text_embeddings, non_topk_indices, values=0, axis=-1)
-            # np.put_along_axis(text_token_ids, non_topk_indices, values=-1, axis=-1)
+            assert text_token_weights.shape[-1] == 1
+            text_token_weights = text_token_weights.squeeze(-1)
+            non_topk_indices = np.argpartition(-text_token_weights, k)[:, k:]
+            np.put_along_axis(text_token_weights, non_topk_indices, values=0, axis=-1)
             # append the last dimension
-            text_embeddings = np.expand_dims(text_embeddings, axis=-1)
-        return text_embeddings
+            text_token_weights = np.expand_dims(text_token_weights, axis=-1)
+        return text_token_weights
 
 
     def encode_text_step(self, x):
@@ -808,6 +768,14 @@ class BaseSparseModel(BaseModel):
         """
         text_token_id = x["text"]["input_ids"].numpy()
         text_token_embedding = np.ones((*text_token_id.shape, self._output_dim), dtype=np.float32)
+
+        if "text_first_mask" in x:
+            # mask the duplicated tokens' weight
+            text_first_mask = self._move_to_device(x["text_first_mask"])
+            text_token_embedding = text_token_embedding.masked_fill(~text_first_mask, 0)
+        else:
+            text_token_embedding[~x["text"]["attention_mask"].bool().numpy()] = 0
+
         return text_token_id, text_token_embedding
 
 
@@ -824,6 +792,7 @@ class BaseSparseModel(BaseModel):
         """
         query_token_id = x["query"]["input_ids"].numpy()
         query_token_embedding = np.ones((*query_token_id.shape, self._output_dim), dtype=np.float32)
+        query_token_embedding[~x["query"]["attention_mask"].bool().numpy()] = 0
         return query_token_id, query_token_embedding
 
 
@@ -849,24 +818,24 @@ class BaseSparseModel(BaseModel):
                 text_embedding_path,
                 mode="r",
                 dtype=np.float32
-            ).reshape(len(loader_text.dataset), self._text_length, self._output_dim).copy()
+            ).reshape(len(loader_text.dataset), self._text_length, self._output_dim)
             text_token_ids = np.memmap(
                 text_token_id_path,
                 mode="r",
                 dtype=np.int32
-            ).reshape(len(loader_text.dataset), self._text_length).copy()
+            ).reshape(len(loader_text.dataset), self._text_length)
 
         elif self.config.load_encode:
             text_embeddings = np.memmap(
                 text_embedding_path,
                 mode="r",
                 dtype=np.float32
-            ).reshape(len(loader_text.dataset), self._text_length, self._output_dim)[loader_text.sampler.start: loader_text.sampler.end].copy()
+            ).reshape(len(loader_text.dataset), self._text_length, self._output_dim)[loader_text.sampler.start: loader_text.sampler.end]
             text_token_ids = np.memmap(
                 text_token_id_path,
                 mode="r",
                 dtype=np.int32
-            ).reshape(len(loader_text.dataset), self._text_length)[loader_text.sampler.start: loader_text.sampler.end].copy()
+            ).reshape(len(loader_text.dataset), self._text_length)[loader_text.sampler.start: loader_text.sampler.end]
 
         else:
             text_token_ids = np.zeros((len(loader_text.sampler), self._text_length), dtype=np.int32)
@@ -926,23 +895,23 @@ class BaseSparseModel(BaseModel):
                 query_embedding_path,
                 mode="r",
                 dtype=np.float32
-            ).reshape(len(loader_query.dataset), self._query_length, self._output_dim).copy()
+            ).reshape(len(loader_query.dataset), self._query_length, self._output_dim)
             query_token_ids = np.memmap(
                 query_token_id_path,
-                mode="r+",
+                mode="r",
                 dtype=np.int32
-            ).reshape(len(loader_query.dataset), self._query_length).copy()
+            ).reshape(len(loader_query.dataset), self._query_length)
         elif self.config.load_encode:
             query_embeddings = np.memmap(
                 query_embedding_path,
                 mode="r",
                 dtype=np.float32
-            ).reshape(len(loader_query.dataset), self._query_length, self._output_dim)[loader_query.sampler.start: loader_query.sampler.end].copy()
+            ).reshape(len(loader_query.dataset), self._query_length, self._output_dim)[loader_query.sampler.start: loader_query.sampler.end]
             query_token_ids = np.memmap(
                 query_token_id_path,
-                mode="r+",
+                mode="r",
                 dtype=np.int32
-            ).reshape(len(loader_query.dataset), self._query_length)[loader_query.sampler.start: loader_query.sampler.end].copy()
+            ).reshape(len(loader_query.dataset), self._query_length)[loader_query.sampler.start: loader_query.sampler.end]
         else:
             query_token_ids = np.zeros((len(loader_query.sampler), self._query_length), dtype=np.int32)
             query_embeddings = np.zeros((len(loader_query.sampler), self._query_length, self._output_dim), dtype=np.float32)
@@ -976,7 +945,6 @@ class BaseSparseModel(BaseModel):
                     obj=query_embeddings
                 )
 
-        query_embeddings, query_token_ids = self._gate_query(query_embeddings, query_token_ids)
         return BaseOutput(embeddings=query_embeddings, token_ids=query_token_ids)
 
 
@@ -988,13 +956,11 @@ class BaseSparseModel(BaseModel):
 
         text_embeddings = encode_output.embeddings
         text_token_ids = encode_output.token_ids
-        text_embeddings_tensor = torch.as_tensor(text_embeddings, device=self.config.device)
+        text_embeddings_tensor = torch.as_tensor(text_embeddings.copy(), device=self.config.device)
 
-        # each process save/load its own shards
-        if not self._rebuild_index:
-            save_dir = os.path.join(self.config.cache_root, "index", "InvList", "BOW" if self._is_bow else "ORG", self.config.plm_tokenizer, "_".join([str(self._text_length), ",".join([str(x) for x in self.config.text_col])]), str(self.config.world_size))
-        else:
-            save_dir = os.path.join(self.index_dir, str(self.config.world_size))
+        # invvec and invhit share the same inverted index
+        bow_state = "BOW" if self._output_dim == 1 else "ORG"
+        save_dir = os.path.join(self.config.cache_root, "index", self.name, "inv", bow_state, self.config.plm_tokenizer, "_".join([str(self._text_length), ",".join([str(x) for x in self.config.text_col])]), str(self.config.world_size))
 
         special_token_ids = set()
         if self._skip_special_tokens:
@@ -1034,29 +1000,31 @@ class BaseSparseModel(BaseModel):
         """
         Construct :class:`utils.index.BaseAnseriniIndex`.
         """
-        if self.config.index_type[:6] == "impact":
-            if self.config.is_distributed:
-                assert self.config.save_encode
-
         encode_output = self.encode_text(loader_text)
 
-        if self.config.is_main_proc:
-            if self.config.index_type[:6] == "impact" and self.config.is_distributed:
-                # load cache only on the master node
-                encode_output = self.encode_text(loader_text, load_all_encode=True)
+        # load cache only on the master node
+        all_encode_output = self.encode_text(loader_text, load_all_encode=True)
+        if not self.config.is_main_proc:
+            all_encode_output = None
 
-            text_token_ids = encode_output.token_ids
-            text_token_weights = encode_output.embeddings.squeeze(-1) if encode_output.embeddings is not None else None
+        if self.config.is_main_proc:
+            if all_encode_output.embeddings is not None:
+                self.logger.warning("Loading all cache from disk, make sure you saved the encoding result (++save_encode) in advance!")
+
+            all_text_token_ids = all_encode_output.token_ids
+            all_text_token_weights = all_encode_output.embeddings.squeeze(-1) if all_encode_output.embeddings is not None else None
 
             # include plm special tokens
             stop_words = set(x[0] for x in self.config.special_token_ids.values() if x[0] is not None)
 
             collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
+            collection_dir = os.path.join(self.index_dir, self.config.index_type, "collection")
+            index_dir = os.path.join(self.index_dir, self.config.index_type, "index")
 
             index = ANSERINI_INDEX_MAP[self.config.index_type](
                 collection_path=collection_path,
-                collection_dir=self.collection_dir,
-                index_dir=self.index_dir
+                collection_dir=collection_dir,
+                index_dir=index_dir
             )
 
             if self.config.load_collection:
@@ -1078,8 +1046,8 @@ class BaseSparseModel(BaseModel):
 
             index.fit(
                 text_cols=self.config.text_col,
-                text_token_ids=text_token_ids,
-                text_token_weights=text_token_weights,
+                text_token_ids=all_text_token_ids,
+                text_token_weights=all_text_token_weights,
                 tokenizer=AutoTokenizer.from_pretrained(self.config.plm_dir),
                 stop_words=stop_words,
                 thread_num=self.config.index_thread,
@@ -1141,43 +1109,36 @@ class BaseSparseModel(BaseModel):
         # use anserini to retrieve
         if isinstance(index, BaseAnseriniIndex):
             # anserini index only on the main process
-            if self.config.is_main_proc:
-                os.makedirs(self.retrieve_dir, exist_ok=True)
+            os.makedirs(self.retrieve_dir, exist_ok=True)
 
-                tid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", "text", "id2index.pkl"))
-                qid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", self.config.eval_set, "id2index.pkl"))
+            tid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", "text", "id2index.pkl"))
+            qid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", self.config.eval_set, "id2index.pkl"))
 
-                query_path = f"{self.config.data_root}/{self.config.dataset}/queries.{self.config.eval_set}.small.tsv"
+            query_path = f"{self.config.data_root}/{self.config.dataset}/queries.{self.config.eval_set}.small.tsv"
 
-                # load all verifier embeddings on the master node
-                verifier = self.init_verifier(loaders, load_all_verifier=True)
+            # load all verifier embeddings on the master node
+            verifier = self.init_verifier(loaders, load_all_verifier=True)
 
-                t1 = time.time()
-                retrieval_result = index.search(
-                    query_token_ids=query_token_ids,
-                    query_token_weights=query_embeddings.squeeze(-1) if query_embeddings is not None else None,
-                    query_path=query_path,
-                    tmp_query_dir=Path(self.index_dir).parent / "query",
-                    retrieval_result_path=self.retrieval_result_path,
-                    hits=self.config.hits,
-                    qid2index=qid2index,
-                    tid2index=tid2index,
-                    language=self.config.language,
-                    k1=self.config.get("k1"),
-                    b=self.config.get("b"),
-                    verifier=verifier
-                )
-
-            else:
-                retrieval_result = {}
-
-            t2 = time.time()
+            self.logger.info("searching...")
+            retrieval_result = index.search(
+                query_token_ids=query_token_ids,
+                query_token_weights=query_embeddings.squeeze(-1) if query_embeddings is not None else None,
+                query_path=query_path,
+                tmp_query_dir=Path(index.index_dir).parent / "query",
+                retrieval_result_path=self.retrieval_result_path,
+                hits=self.config.hits,
+                qid2index=qid2index,
+                tid2index=tid2index,
+                language=self.config.language,
+                k1=self.config.get("k1"),
+                b=self.config.get("b"),
+                verifier=verifier
+            )
 
         # inverted index and None
         elif isinstance(index, BaseInvertedIndex):
             verifier = self.init_verifier(loaders)
 
-            t1 = time.time()
             self.logger.info("searching...")
             retrieval_result, posting_list_length = index.search(
                 query_token_ids=query_token_ids,
@@ -1188,8 +1149,7 @@ class BaseSparseModel(BaseModel):
                 eval_posting_length=self.config.eval_posting_length,
                 verifier=verifier
             )
-            # retrieval_result = {0:[(0,1.)]}
-            t2 = time.time()
+
             # manually delete the index
             del index
 
@@ -1202,6 +1162,10 @@ class BaseSparseModel(BaseModel):
                 self.metrics["Posting_List_Length"] = int(np.round(posting_list_length))
                 self.logger.info(f"Average Posting Length is {self.metrics['Posting_List_Length']}!")
 
+        # non-main process in anserini index
+        elif index is None:
+            retrieval_result = {}
+
         else:
             raise NotImplementedError
 
@@ -1211,8 +1175,8 @@ class BaseSparseModel(BaseModel):
         return retrieval_result
 
 
-    @synchronize
     @torch.no_grad()
+    @synchronize
     def compute_flops(self, loaders:LOADERS, text_token_ids:np.ndarray, text_token_weights:np.ndarray, query_token_ids:np.ndarray, query_token_weights:np.ndarray, log:bool=True):
         """
         Compute flops as stated in `SPLADE <https://arxiv.org/pdf/2109.10086.pdf>`_;
@@ -1753,7 +1717,8 @@ class BaseDenseModel(BaseModel):
             text_num = len(loader_text.dataset)
             assignment_path = os.path.join(self.config.cache_root, "cluster", self.name, self.config.cluster_type, "assignments.mmp")
 
-            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.data_root, "PLM", self.config.code_tokenizer))
+            self.config._set_plm(self.config.code_tokenizer)
+            tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
 
             # generate codes from pre-defined cluster assignments
             if os.path.exists(assignment_path):
@@ -1945,3 +1910,8 @@ class BaseGenerativeModel(BaseModel):
             )
 
         return retrieval_result
+
+
+@synchronize
+def test(config):
+    print(f"fuck {config.rank}")

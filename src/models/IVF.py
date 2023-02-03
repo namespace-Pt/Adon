@@ -1,7 +1,6 @@
 import os
 import faiss
 import torch
-import subprocess
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,7 +16,7 @@ from utils.typings import *
 
 class TopIVF(BaseSparseModel):
     """
-    Topic IVF. The ivf assignment and centroid embeddings are all trainable. Always lead to a better performance.
+    Topic IVF.
     """
     def __init__(self, config):
         super().__init__(config)
@@ -132,7 +131,7 @@ class TopIVF(BaseSparseModel):
             return quantized_embedding, ivf_id, ivf_weight
 
         elif self.config.quantize_ivf == "fixed":
-            ivf_id = torch.as_tensor(self._ivf_codes[text_idx.numpy()], device=self.config.device, dtype=torch.long)
+            ivf_id = torch.as_tensor(self._ivf_codes[text_idx], device=self.config.device, dtype=torch.long)
             ivf_weight = torch.ones(ivf_id.shape, device=ivf_id.device)
             if self.training:
                 quantized_embedding = self.ivfCentroids[ivf_id]
@@ -144,7 +143,7 @@ class TopIVF(BaseSparseModel):
 
     def _quantize_pq(self, text_idx:TENSOR):
         # pq_id = self._pq_codes[text_idx].long()
-        pq_id = torch.as_tensor(self._pq_codes[text_idx.numpy()], device=self.config.device, dtype=torch.long)
+        pq_id = torch.as_tensor(self._pq_codes[text_idx], device=self.config.device, dtype=torch.long)
         quantized_embedding = pq_quantize(pq_id, self.pqCentroids)
         return quantized_embedding
 
@@ -193,10 +192,6 @@ class TopIVF(BaseSparseModel):
             loss_dense = self._compute_loss(score_dense, label, teacher_score)
         else:
             loss_dense = 0
-
-        if self.config.scale_ivf_loss:
-            # rescale the ivf loss
-            loss_ivf = loss_ivf * float(loss_pq / (loss_ivf + 1e-6))
 
         return loss_pq + loss_ivf + loss_dense
 
@@ -313,8 +308,12 @@ class TokIVF(UniCOIL):
 
 
     def _encode_query(self, **kwargs):
-        token_embedding = torch.ones_like(kwargs["input_ids"]).unsqueeze(-1)
+        token_embedding = torch.ones_like(kwargs["input_ids"], dtype=torch.float).unsqueeze(-1)
         return token_embedding
+
+
+    def encode_query_step(self, x):
+        return BaseSparseModel.encode_query_step(self, x)
 
 
 

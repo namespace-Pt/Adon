@@ -22,8 +22,6 @@ model:
   embedding_src: RetroMAE
   return_embedding: true
 
-  save_encode: true
-
   load_ckpt: none
 
 eval:

@@ -1,11 +1,13 @@
 import os
+import collections
 import numpy as np
 import torch.distributed as dist
 from tqdm import tqdm
 from collections import defaultdict
+from torch._six import string_classes
+from torch.utils.data import Dataset, IterableDataset, DataLoader
 from random import sample, choice, shuffle
 from transformers import AutoTokenizer
-from torch.utils.data import Dataset, IterableDataset
 from .util import load_pickle, save_pickle, MasterLogger, Config
 from .typings import *
 
@@ -86,14 +88,6 @@ class BaseDataset(Dataset):
                     dtype=np.float32
                 ).reshape(self.text_num, -1)
 
-            # only load teacher embeddings when training
-            if config.get("objective") == "kd" and config.mode == "train":
-                self.text_teacher_embeddings = np.memmap(
-                    os.path.join(config.cache_root, "encode", config.distill_src, "text_embeddings.mmp"),
-                    mode="r",
-                    dtype=np.float32
-                ).reshape(self.text_num, -1)
-
         if load_query:
             assert load_query in ["train-memmap", "dev-memmap", "test-memmap", "train-raw", "dev-raw", "test-raw"]
             mode, data_format = load_query.split("-")
@@ -125,13 +119,6 @@ class BaseDataset(Dataset):
                     mode="r",
                     dtype=np.float32
                 ).reshape(self.query_num, -1)
-
-            if config.get("objective") == "kd" and config.mode == "train":
-                self.query_teacher_embeddings = np.memmap(
-                    os.path.join(config.cache_root, "encode", config.distill_src, mode, "query_embeddings.mmp"),
-                    mode="r",
-                    dtype=np.float32
-                ).reshape(self.query_num, 768)
 
 
     def init_negative(self, qrel_path, negative_path):
@@ -232,6 +219,19 @@ class TrainDataset(BaseDataset):
         negative_path = os.path.join(self.cache_dir, "train", f"negatives_{config.hard_neg_type}.pkl")
         self.qrels, self.negatives = self.init_negative(qrel_path, negative_path)
 
+        if config.enable_distill == "bi":
+            self.text_teacher_embeddings = np.memmap(
+                os.path.join(config.cache_root, "encode", config.distill_src, "text_embeddings.mmp"),
+                mode="r",
+                dtype=np.float32
+            ).reshape(self.text_num, -1)
+
+            self.query_teacher_embeddings = np.memmap(
+                os.path.join(config.cache_root, "encode", config.distill_src, "train", "query_embeddings.mmp"),
+                mode="r",
+                dtype=np.float32
+            ).reshape(self.query_num, 768)
+
 
     def __len__(self):
         return len(self.qrels)
@@ -290,13 +290,12 @@ class TrainDataset(BaseDataset):
             query_sep_mask[sep_pos] = 0
             return_dict["query_sep_mask"] = query_sep_mask
 
-        if self.config.objective == "kd":
-            if self.config.distill_type == "bi":
-                return_dict["query_teacher_embedding"] = self.query_teacher_embeddings[query_idx].astype(np.float32)
-                return_dict["text_teacher_embedding"] = self.text_teacher_embeddings[text_idx].astype(np.float32)
-            elif self.config.distill_type == "cross":
-                # TODO
-                pass
+        if self.config.enable_distill == "bi":
+            return_dict["query_teacher_embedding"] = self.query_teacher_embeddings[query_idx].astype(np.float32)
+            return_dict["text_teacher_embedding"] = self.text_teacher_embeddings[text_idx].astype(np.float32)
+        elif self.config.enable_distill == "cross":
+            # TODO
+            pass
 
         if self.config.get("return_embedding"):
             return_dict["query_embedding"] = self.query_embeddings[query_idx].astype(np.float32)
@@ -429,18 +428,6 @@ class QueryDataset(BaseDataset):
 
         if self.config.get("return_embedding"):
             return_dict["query_embedding"] = self.query_embeddings[index].astype(np.float32)
-
-        if self.config.get("return_first_mask"):
-            query_first_mask = np.zeros(self.config.query_length, dtype=np.bool)
-            token_set = set()
-            for i, token_id in enumerate(query["input_ids"]):
-                if token_id in self.special_token_ids:
-                    continue
-                if token_id in token_set:
-                    continue
-                query_first_mask[i] = 1
-                token_set.add(token_id)
-            return_dict["query_first_mask"] = query_first_mask
 
         return return_dict
 
@@ -611,8 +598,9 @@ class NMTTrainDataset(BaseDataset):
             candidates[k] = v
 
         if config.get("return_doct5"):
+            text_name = ",".join([str(x) for x in config.text_col])
             doct5_token_ids = np.memmap(
-                os.path.join(self.cache_dir, "text", config.plm_tokenizer, "doct5.mmp"),
+                os.path.join(self.cache_dir, "text", text_name, config.plm_tokenizer, "doct5.mmp"),
                 mode="r",
                 dtype=np.int32
             ).reshape(self.text_num, -1, config.query_length)[:, :config.query_per_doc]
@@ -661,4 +649,131 @@ class NMTTrainDataset(BaseDataset):
         }
         return return_dict
 
+
+
+class Sequential_Sampler:
+    """
+    The sampler used in creating sequential dataloader.
+    """
+    def __init__(self, dataset_length:int, num_replicas:int, rank:int) -> None:
+        """
+        Args:
+            dataset_length: length of the dataset
+            num_replicas: number of splits
+            rank: the current process id
+
+        Attributes:
+            start: the starting index
+            end: the ending index
+        """
+        super().__init__()
+        len_per_worker = dataset_length / num_replicas
+        # force to set rank==0 because when world_size==1 the local_rank is -1 by default
+        if num_replicas == 1:
+            rank = 0
+        self.start = round(len_per_worker * rank)
+        self.end = round(len_per_worker * (rank + 1))
+
+    def __iter__(self):
+        start = self.start
+        end = self.end
+        return iter(range(start, end, 1))
+
+    def __len__(self):
+        return self.end - self.start
+
+
+
+def default_collate(batch):
+    elem = batch[0]
+    elem_type = type(elem)
+    if isinstance(elem, torch.Tensor):
+        return torch.stack(batch, 0)
+    elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
+            and elem_type.__name__ != 'string_':
+        if elem_type.__name__ == 'ndarray' or elem_type.__name__ == 'memmap':
+            return default_collate([torch.as_tensor(b) for b in batch])
+        elif elem.shape == ():  # scalars
+            return torch.as_tensor(batch)
+    elif isinstance(elem, list):
+        return torch.as_tensor(batch)
+    elif isinstance(elem, float):
+        return torch.tensor(batch, dtype=torch.float32)
+    elif isinstance(elem, int):
+        return torch.tensor(batch)
+    elif isinstance(elem, string_classes):
+        return batch
+    elif isinstance(elem, collections.abc.Mapping):
+        return elem_type({key: default_collate([d[key] for d in batch]) for key in elem})
+    raise TypeError("default_collate: batch must contain tensors, numpy arrays, numbers, dicts or lists; found {}".format(elem_type))
+
+
+
+
+def prepare_data(config) -> LOADERS:
+    """
+    Prepare dataloader for training/evaluating.
+
+    Returns:
+        dict[str, DataLoader]:
+
+            train: dataloader for trianing; including neg/triple/triple-raw...
+
+            text: dataloader for text corpus if ``config.loader_text`` is not ``none``;
+
+            query: dataloader for query in ``eval_set`` if ``config.loader_eval`` is ``retrieve``;
+
+            rerank: dataloader for rerank if ``config.loader_eval`` is ``rerank``;
+
+    """
+    loaders = {}
+
+    if config.loader_text != "none":
+        dataset_passage = TextDataset(config, config.loader_text)
+        if config.parallel == "text":
+            sampler_passage = Sequential_Sampler(len(dataset_passage), num_replicas=config.world_size, rank=config.rank)
+        else:
+            sampler_passage = Sequential_Sampler(len(dataset_passage), num_replicas=1, rank=0)
+        loaders["text"] = DataLoader(dataset_passage, batch_size=config.eval_batch_size, sampler=sampler_passage, num_workers=config.num_worker, collate_fn=default_collate)
+
+    if config.loader_query != "none":
+        dataset_query = QueryDataset(config, mode=config.eval_set, data_format=config.loader_query)
+        if config.parallel == "query":
+            sampler_query = Sequential_Sampler(len(dataset_query), num_replicas=config.world_size, rank=config.rank)
+        else:
+            sampler_query = Sequential_Sampler(len(dataset_query), num_replicas=1, rank=0)
+        loaders["query"] = DataLoader(dataset_query, batch_size=config.eval_batch_size, sampler=sampler_query, num_workers=config.num_worker, collate_fn=default_collate)
+
+    if config.get("loader_rerank") != "none":
+        dataset_rerank = PairDataset(config, config.eval_set, data_format=config.loader_rerank)
+        sampler_rerank = Sequential_Sampler(len(dataset_rerank), num_replicas=config.world_size, rank=config.rank)
+        loaders["rerank"] = DataLoader(dataset_rerank, batch_size=config.eval_batch_size, sampler=sampler_rerank, num_workers=config.num_worker, collate_fn=default_collate)
+
+    # import psutil
+    # memory_consumption = round(psutil.Process().memory_info().rss / 1e6)
+    # self.logger.info(f"Memory Usage of Curren Process is {memory_consumption} MB!")
+
+    return loaders
+
+
+def prepare_train_data(config, return_dataloader=False):
+    if config.get("loader_train") == "neg":
+        train_dataset = TrainDataset(config)
+    elif config.get("loader_train") == "neg-raw":
+        train_dataset = TrainDataset(config, data_format="raw")
+    elif config.get("loader_train") == "triple-raw":
+        train_dataset = RawTripleTrainDataset(config)
+    elif config.get("loader_train") == "pair":
+        train_dataset = PairDataset(config, mode="train")
+    elif config.get("loader_train") == "pair-memmap":
+        train_dataset = PairDataset(config, mode="train", data_format="memmap")
+    elif config.get("loader_train") == "nmt":
+        train_dataset = NMTTrainDataset(config)
+
+    # only used in developing (dev.ipynb)
+    if return_dataloader:
+        train_loader = DataLoader(train_dataset, batch_size=config.batch_size, collate_fn=default_collate)
+        return train_loader
+
+    return train_dataset
 

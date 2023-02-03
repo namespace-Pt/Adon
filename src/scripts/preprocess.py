@@ -6,16 +6,15 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from collections import defaultdict
 from transformers import AutoTokenizer
-from utils.manager import Manager
-from utils.util import save_pickle, load_pickle
+from utils.util import save_pickle, load_pickle, Config
 from utils.typings import *
 
 import hydra
 from pathlib import Path
 from omegaconf import OmegaConf
 @hydra.main(version_base=None, config_path="../data/config/", config_name=f"script/{Path(__file__).stem}")
-def get_config(config: OmegaConf):
-    manager.setup(config)
+def get_config(hydra_config: OmegaConf):
+    config._from_hydra(hydra_config)
 
 
 def init_text(collection_path:str, cache_dir:str) -> ID_MAPPING:
@@ -198,9 +197,8 @@ if __name__ == "__main__":
 
     logger = logging.getLogger("Preprocess")
 
-    manager = Manager()
+    config = Config()
     get_config()
-    config = manager.config
 
     cache_dir = os.path.join(config.cache_root, "dataset")
     data_dir = os.path.join(config.data_root, config.dataset)

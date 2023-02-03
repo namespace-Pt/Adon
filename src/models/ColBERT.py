@@ -9,12 +9,9 @@ class ColBERT(BaseModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.plm = AutoModel.from_pretrained(config.plm_dir)
-        if hasattr(self.plm, "pooler"):
-            # pooler will not receive any gradient in training, which may trigger a DDP error
-            self.plm.pooler = None
+        self._set_encoder()
 
-        self.tokenProject = nn.Linear(self.plm.config.hidden_size, config.token_dim)
+        self.tokenProject = nn.Linear(self.textEncoder.config.hidden_size, config.token_dim)
 
 
     def _encode_text(self, **kwargs):
@@ -23,13 +20,13 @@ class ColBERT(BaseModel):
             if v.dim() == 3:
                 kwargs[k] = v.view(-1, v.shape[-1])
 
-        token_all_embedding = self.plm(**kwargs)[0]
+        token_all_embedding = self.textEncoder(**kwargs)[0]
         token_embedding = self.tokenProject(token_all_embedding)
         return token_embedding
 
 
     def _encode_query(self, **kwargs):
-        token_all_embedding = self.plm(**kwargs)[0]
+        token_all_embedding = self.queryEncoder(**kwargs)[0]
         token_embedding = self.tokenProject(token_all_embedding)
         return token_embedding
 

@@ -8,15 +8,14 @@ import json
 import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
-from utils.manager import Manager
-from utils.util import load_pickle, save_pickle
+from utils.util import load_pickle, save_pickle, Config
 
 import hydra
 from pathlib import Path
 from omegaconf import OmegaConf
 @hydra.main(version_base=None, config_path="../data/config/", config_name=f"script/{Path(__file__).stem}")
-def get_config(config: OmegaConf):
-    manager.setup(config)
+def get_config(hydra_config: OmegaConf):
+    config._from_hydra(hydra_config)
 
 
 if __name__ == "__main__":
@@ -25,9 +24,8 @@ if __name__ == "__main__":
         if "=" not in arg:
             sys.argv[i] += "=true"
 
-    manager = Manager()
+    config = Config()
     get_config()
-    config = manager.config
 
     positives = load_pickle(f"{config.cache_root}/dataset/train/positives.pkl")
 

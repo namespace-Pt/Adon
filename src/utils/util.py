@@ -3,16 +3,17 @@ import json
 import faiss
 import torch
 import pickle
+import random
 import logging
-import collections
 import numpy as np
 import torch.distributed as dist
 from tqdm import tqdm
 from datetime import timedelta
+from omegaconf import OmegaConf
 from dataclasses import dataclass
 from contextlib import contextmanager
 from collections import OrderedDict
-from torch._six import string_classes
+from transformers import AutoModel, AutoTokenizer
 from .typings import *
 
 
@@ -38,6 +39,7 @@ def load_from_previous(model:torch.nn.Module, path:str):
     Load checkpoint from the older version of Uni-Retriever, only load model parameters and overrides the config by the current config.
     """
     ckpt = torch.load(path, map_location=torch.device("cpu"))
+    print(f"loading from {path}...")
     state_dict = ckpt["model"]
     try:
         metrics = ckpt["metrics"]
@@ -47,8 +49,9 @@ def load_from_previous(model:torch.nn.Module, path:str):
 
     new_state_dict = {}
     for k, v in state_dict.items():
-        if "bert" in k:
-            new_state_dict[k.replace("bert", "plm")] = v
+        if "plm" in k:
+            new_state_dict[k.replace("plm", "textEncoder")] = v
+            new_state_dict[k.replace("plm", "queryEncoder")] = v
         else:
             new_state_dict[k] = v
 
@@ -106,17 +109,21 @@ def update_hydra_config(config:dict):
             src[k] = v
 
     outer_keys = list(src.keys())
-    for k, v in dest.items():
-        for sk in outer_keys:
-            if sk in v:
+    remain_keys = []
+    for ok in outer_keys:
+        ov = src[ok]
+        for k, v in dest.items():
+            if ok in v:
                 # override the same config in the inner config group
-                dest[k][sk] = src.pop(sk)
+                dest[k][ok] = ov
+        else:
+            remain_keys.append(ok)
 
     # if there is still remaining parameters
-    if len(src):
+    if len(remain_keys):
         dest["extra"] = {}
-        for sk, sv in src.items():
-            dest["extra"][sk] = sv
+        for key in remain_keys:
+            dest["extra"][key] = src[key]
 
     return dest
 
@@ -380,31 +387,7 @@ def compute_metrics_nq(retrieval_result:RETRIEVAL_MAPPING, query_answer_path:str
     from scripts.evalnq import load_test_data, validate
 
     answers, collection = load_test_data(query_answer_path, collection_path)
-    return validate(retrieval_result, answers, collection, num_workers=0, batch_size=16)
-
-
-def default_collate(batch):
-    elem = batch[0]
-    elem_type = type(elem)
-    if isinstance(elem, torch.Tensor):
-        return torch.stack(batch, 0)
-    elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
-            and elem_type.__name__ != 'string_':
-        if elem_type.__name__ == 'ndarray' or elem_type.__name__ == 'memmap':
-            return default_collate([torch.as_tensor(b) for b in batch])
-        elif elem.shape == ():  # scalars
-            return torch.as_tensor(batch)
-    elif isinstance(elem, list):
-        return torch.as_tensor(batch)
-    elif isinstance(elem, float):
-        return torch.tensor(batch, dtype=torch.float32)
-    elif isinstance(elem, int):
-        return torch.tensor(batch)
-    elif isinstance(elem, string_classes):
-        return batch
-    elif isinstance(elem, collections.abc.Mapping):
-        return elem_type({key: default_collate([d[key] for d in batch]) for key in elem})
-    raise TypeError("default_collate: batch must contain tensors, numpy arrays, numbers, dicts or lists; found {}".format(elem_type))
+    return validate(retrieval_result, answers, collection, num_workers=8, batch_size=8)
 
 
 def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int):
@@ -599,38 +582,6 @@ def _get_token_code_for_aligned_tokenizer(output_path:str, token_ids:np.ndarray,
         codes[start_idx + i, 1:] = sorted_token
 
 
-class Sequential_Sampler:
-    """
-    The sampler used in creating sequential dataloader.
-    """
-    def __init__(self, dataset_length:int, num_replicas:int, rank:int) -> None:
-        """
-        Args:
-            dataset_length: length of the dataset
-            num_replicas: number of splits
-            rank: the current process id
-
-        Attributes:
-            start: the starting index
-            end: the ending index
-        """
-        super().__init__()
-        len_per_worker = dataset_length / num_replicas
-        # force to set rank==0 because when world_size==1 the local_rank is -1 by default
-        if num_replicas == 1:
-            rank = 0
-        self.start = round(len_per_worker * rank)
-        self.end = round(len_per_worker * (rank + 1))
-
-    def __iter__(self):
-        start = self.start
-        end = self.end
-        return iter(range(start, end, 1))
-
-    def __len__(self):
-        return self.end - self.start
-
-
 
 class Cluster():
     """
@@ -673,6 +624,8 @@ class Cluster():
             index = faiss.IndexFlatIP(embeddings.shape[1])
         elif metric == "l2":
             index = faiss.IndexFlatL2(embeddings.shape[1])
+        else:
+            raise NotImplementedError(f"Cluster metric {metric}!")
 
         if self.device != "cpu":
             index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), self.device, index)
@@ -837,17 +790,53 @@ class Config(DotDict):
         Launch distributed necessary parameters.
         """
         super().__init__(*args, **kwargs)
-        self.setup_distributed()
 
     def __repr__(self) -> str:
         # skip hidden attributes
-        return str({k: v for k, v in super().items() if k[:9] != "_Config__"})
+        return str({k: v for k, v in sorted(self.items())})
 
     def items(self):
         # skip hidden attributes
         return [(k, v) for k, v in super().items() if k[:9] != "_Config__"]
 
-    def setup_distributed(self):
+    def __post_init__(self):
+        self._set_distributed()
+        # attributed starting with __ and set inside the class method is invisible to the outside, and cannot be saved by pickle
+        self.__logger = MasterLogger("Config")
+        # the logger is involked in the following methods and hence should be initialized first
+        self._set_seed()
+        self._set_plm()
+
+        # post initialize
+        # some awkward dataset specific setting
+        # TODO: use hydra optional config
+        self.cache_root = os.path.join("data", "cache", self.dataset)
+
+        if self.mode not in ["train", "script"] and self.load_ckpt is None:
+            self.load_ckpt = "best"
+        if self.mode in ["encode", "encode-query", "encode-text"]:
+            self.save_encode = True
+
+        if self.mode == "train" and self.debug:
+            self.eval_step = 10
+            self.eval_delay = 0
+        if self.dataset == "LECARD":
+            if self.get("index_type") in ["bm25", "impact-tok", "impact-word"]:
+                self.language = "zh"
+            if self.get("eval_metric"):
+                self.eval_metric = "mrr,map,precision,ndcg".split(",")
+                self.eval_metric_cutoff = [5, 10, 20, 30]
+        elif self.dataset in ["NQ", "NQ-url"]:
+            if self.get("eval_metric"):
+                self.eval_metric_cutoff = [1, 5, 10, 100, 1000]
+            if self.get("index_type") == "bm25":
+                self.k1 = 1.5
+                self.b = 0.75
+        elif self.dataset == "NQ-open":
+            if self.get("main_metric"):
+                self.main_metric = "Recall@10"
+
+    def _set_distributed(self):
         """
         Set up distributed nccl backend.
         """
@@ -861,21 +850,156 @@ class Config(DotDict):
         if self.world_size > 1 and not dist.is_initialized():
             os.environ["TOKENIZERS_PARALLELISM"] = "True"
             os.environ["TORCH_DISTRIBUTED_DEBUG"] = "OFF"
-
             os.environ["NCCL_DEBUG"] = "WARN"
-            # os.environ["MASTER_ADDR"] = "localhost"
-            # os.environ["MASTER_PORT"] = str(12356 + self.config.port_offset)
-
-            # initialize the process group
-            # set a large timeout because sometimes we may make the main process do a lot jobs and keep other processes waiting
-            dist.init_process_group("nccl", timeout=timedelta(0, 1000000))
 
             # manager.device will be invoked in the model
             # set the device to the local rank because we may use multi-node distribution
             if self.device != "cpu":
+                # initialize the process group; nccl backend for cuda training/inference
+                # set a large timeout because sometimes we may make the main process do a lot jobs and keep other processes waiting
+                dist.init_process_group("nccl", timeout=timedelta(0, 1000000))
+
                 self.device = self.__local_rank
                 # essential to make all_gather_object work properly
                 torch.cuda.set_device(self.device)
+
+            else:
+                # initialize the process group; gloo backend for cpu training/inference
+                # set a large timeout because sometimes we may make the main process do a lot jobs and keep other processes waiting
+                dist.init_process_group("gloo", timeout=timedelta(0, 1000000))
+
+    def _set_plm(self, plm:Optional[str]=None, already_on_main_proc=False):
+        """
+        Load huggingface plms; download it if it doesn't exist. One may add a new plm into the ``plm_map`` object so that Manager knows how to
+        download it (``load_name``) and where to store it cache files (``tokenizer``).
+
+        Attributes:
+            special_token_ids(Dict[Tuple]): stores the token and token_id of each special tokens
+        """
+        if plm is None:
+            plm = self.plm
+
+        self.logger.info(f"setting PLM to {plm}...")
+
+        plm_map = {
+            "bert": {
+                # different model may share the same tokenizer, so we can load the same tokenized data for them
+                "tokenizer": "bert",
+                "load_name": "bert-base-uncased"
+            },
+            "distilbert": {
+                "tokenizer": "bert",
+                "load_name": "distilbert-base-uncased",
+            },
+            "ernie": {
+                "tokenizer": "bert",
+                "load_name": "nghuyong/ernie-2.0-en"
+            },
+            "bert-chinese": {
+                "tokenizer": "bert-chinese",
+                "load_name": "bert-base-chinese"
+            },
+            "bert-xingshi": {
+                "tokenizer": "bert-xingshi",
+                "load_name": "null"
+            },
+            "t5-small": {
+                "tokenizer": "t5",
+                "load_name": "t5-small"
+            },
+            "t5": {
+                "tokenizer": "t5",
+                "load_name": "t5-base"
+            },
+            "doct5": {
+                "tokenizer": "t5",
+                "load_name": "castorini/doc2query-t5-base-msmarco"
+            },
+            "distilsplade": {
+                "tokenizer": "bert",
+                "load_name": "null"
+            },
+            "splade": {
+                "tokenizer": "bert",
+                "load_name": "null"
+            },
+            "bart": {
+                "tokenizer": "bart",
+                "load_name": "facebook/bart-base"
+            },
+            "retromae": {
+                "tokenizer": "bert",
+                "load_name": "Shitao/RetroMAE"
+            },
+            "retromae_msmarco": {
+                "tokenizer": "bert",
+                "load_name": "Shitao/RetroMAE_MSMARCO"
+            },
+            "retromae_distill": {
+                "tokenizer": "bert",
+                "load_name": "Shitao/RetroMAE_MSMARCO_distill"
+            },
+            "deberta": {
+                "tokenizer": "deberta",
+                "load_name": "microsoft/deberta-base"
+            },
+        }
+
+        self.plm_dir = os.path.join(self.plm_root, plm)
+        self.plm_tokenizer = plm_map[plm]["tokenizer"]
+
+        # download plm once
+        if self.is_main_proc and not os.path.exists(os.path.join(self.plm_dir, "pytorch_model.bin")):
+            print(f"downloading {plm_map[plm]['load_name']}")
+            os.makedirs(self.plm_dir, exist_ok=True)
+            tokenizer = AutoTokenizer.from_pretrained(plm_map[plm]["load_name"])
+            tokenizer.save_pretrained(self.plm_dir)
+            model = AutoModel.from_pretrained(plm_map[plm]["load_name"])
+            model.save_pretrained(self.plm_dir)
+        if not already_on_main_proc:
+            synchronize()
+
+        tokenizer = AutoTokenizer.from_pretrained(self.plm_dir)
+        # otherwise transofrmers library throws an error logging for some plm that lacks some special token
+        with all_logging_disabled():
+            self.special_token_ids = {
+                "cls": (tokenizer.cls_token, tokenizer.cls_token_id),
+                "pad": (tokenizer.pad_token, tokenizer.pad_token_id),
+                "unk": (tokenizer.unk_token, tokenizer.unk_token_id),
+                "sep": (tokenizer.sep_token if tokenizer.sep_token is not None else tokenizer.eos_token, tokenizer.sep_token_id if tokenizer.sep_token_id is not None else tokenizer.eos_token_id),
+            }
+        self.vocab_size = tokenizer.vocab_size
+        del tokenizer
+        # map text_col_sep to special_token if applicable
+        self.text_col_sep = self.special_token_ids[self.text_col_sep][0] if self.text_col_sep in self.special_token_ids else self.text_col_sep
+
+    def _set_seed(self, seed=None):
+        if seed is None:
+            seed = self.seed
+        self.logger.info(f"setting seed to {seed}...")
+        # set seed
+        random.seed(seed)
+        os.environ["PYTHONHASHSEED"] = str(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+    def _from_hydra(self, hydra_config:OmegaConf):
+        hydra_config = update_hydra_config(OmegaConf.to_container(hydra_config))
+        # remove train config if not training
+        if "train" in hydra_config and hydra_config["base"]["mode"] != "train":
+            del hydra_config["train"]
+        # flatten the config object
+        config = flatten_hydra_config(hydra_config)
+        for k, v in config.items():
+            setattr(self, k, v)
+
+        self.__post_init__()
+        if "extra" in hydra_config:
+            self.logger.info(f"Incoming configs will be set: {hydra_config['extra']}")
+
+        self.logger.info(f"Config: {self}")
 
     @property
     def rank(self):
@@ -893,6 +1017,11 @@ class Config(DotDict):
     @property
     def is_distributed(self):
         return self.world_size > 1
+
+    @property
+    def logger(self):
+        return self.__logger
+
 
 
 

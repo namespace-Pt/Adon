@@ -14,21 +14,8 @@ class DPR(BaseDenseModel):
     def __init__(self, config):
         super().__init__(config)
 
-        if self.config.get("untie_encoder"):
-            self.queryEncoder = AutoModel.from_pretrained(config.plm_dir)
-            self.textEncoder = AutoModel.from_pretrained(config.plm_dir)
-            if hasattr(self.queryEncoder, "pooler"):
-                self.queryEncoder.pooler = None
-                self.textEncoder.pooler = None
-            self._output_dim = self.textEncoder.config.hidden_size
-
-        else:
-            plm = AutoModel.from_pretrained(config.plm_dir)
-            if hasattr(plm, "pooler"):
-                plm.pooler = None
-            self.textEncoder = plm
-            self.queryEncoder = plm
-            self._output_dim = plm.config.hidden_size
+        self._set_encoder()
+        self._output_dim = self.textEncoder.config.hidden_size
 
 
     def _encode_text(self, **kwargs):

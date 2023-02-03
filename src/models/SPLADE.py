@@ -9,7 +9,7 @@ class SPLADEv2(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.plm = AutoModelForMaskedLM.from_pretrained(config.plm_dir)
+        self._set_encoder()
 
         if self.config.mode == "train":
             self._step = 0
@@ -20,14 +20,19 @@ class SPLADEv2(BaseSparseModel):
         self._text_length = self.config.text_decode_k
         self._query_length = self.config.query_decode_k
 
-
-    def _encode(self, **kwargs):
+    def _encode_text(self, **kwargs):
         for k, v in kwargs.items():
             # B, 1+N, L -> B * (1+N), L
             if v.dim() == 3:
                 kwargs[k] = v.view(-1, v.shape[-1])
 
-        token_all_embedding = self.plm(**kwargs, return_dict=True).logits
+        token_all_embedding = self.textEncoder(**kwargs, return_dict=True).logits
+        token_all_embedding = torch.log(F.relu(token_all_embedding) + 1) * kwargs["attention_mask"].unsqueeze(-1)    # B, L, V
+        token_embedding = token_all_embedding.max(dim=1)[0]  # B, V
+        return token_embedding
+
+    def _encode_query(self, **kwargs):
+        token_all_embedding = self.queryEncoder(**kwargs, return_dict=True).logits
         token_all_embedding = torch.log(F.relu(token_all_embedding) + 1) * kwargs["attention_mask"].unsqueeze(-1)    # B, L, V
         token_embedding = token_all_embedding.max(dim=1)[0]  # B, V
         return token_embedding

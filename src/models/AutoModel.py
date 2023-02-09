@@ -2,6 +2,7 @@ import os
 import torch
 from .BaseModel import BaseModel
 
+from .AR2 import AR2
 from .BM25 import BM25
 from .COIL import COIL
 from .ColBERT import ColBERT
@@ -11,6 +12,7 @@ from .DPR import DPR
 from .IVF import IVF, TopIVF, TokIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
+from .Sequer import Sequer
 from .RankT5 import RankT5
 from .CrossEnc import CrossEncoder
 from .UniCOIL import UniCOIL
@@ -18,6 +20,7 @@ from .UniRetriever import UniRetriever
 from .VQ import DistillVQ
 
 MODEL_MAP = {
+    "ar2": AR2,
     "bm25": BM25,
     "coil": COIL,
     "colbert": ColBERT,
@@ -28,6 +31,8 @@ MODEL_MAP = {
     "dsi": DSI,
     "ivf": IVF,
     "rankt5": RankT5,
+    "seq2seq": Sequer,
+    "sequer": Sequer,
     "sparta": SPARTA,
     "spladev2": SPLADEv2,
     "topivf": TopIVF,

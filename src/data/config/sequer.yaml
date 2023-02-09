@@ -1,0 +1,41 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: NQ
+  - model: ranker
+  - index: trie
+  - train: neg
+  - eval: rerank
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  plm: t5
+
+model:
+  model_type: sequer
+  train_scheme: contra
+  # beam size
+  nbeam: 10
+  # length penalty in generic beam scoring
+  length_penalty: 0
+  # how to restore missing branches
+  restore: none
+  # threshold for relaxed beam search
+  beam_trsd: 0
+
+  return_code: true
+  code_type: UniCOIL-weight
+  code_tokenizer: t5
+  code_length: 34
+  return_prefix_mask: true
+
+train:
+  batch_size: 10
+  learning_rate: 3e-5
+  hard_neg_type: ANCE
+  hard_neg_num: 49
+
+eval:
+  candidate_type: DPR_hn
+  parallel: query

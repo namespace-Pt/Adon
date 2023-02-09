@@ -19,7 +19,9 @@ index:
   index_type: Flat
 
 train:
-  batch_size: 128
+  batch_size: 32
+  hard_neg_num: 7
+  hard_neg_type: DPR
   learning_rate: 3e-5
   scheduler: linear
-  hard_neg_type: DPR
+

@@ -9,6 +9,7 @@ import numpy as np
 import multiprocessing as mp
 # lazy import to avoid cuda error message
 from torch_scatter import scatter_max
+from transformers import T5ForConditionalGeneration
 from copy import copy
 from tqdm import tqdm
 from typing import Dict, List
@@ -1374,8 +1375,7 @@ class TrieIndex(BaseTrieIndexIndex):
         parts = []
         append = parts.append
 
-        # pylint: disable=dangerous-default-value
-        def generator(node, key_factory=tuple, parts=parts,
+        def generator(node, key_factory=list, parts=parts,
                       append=append, null=NULL):
             if node.value is not null:
                 yield (key_factory(parts), node.value)
@@ -1485,6 +1485,190 @@ class TrieIndex(BaseTrieIndexIndex):
             self.logger.info(f"children number per layer: {np.round(children_num_per_layer, 3)}")
             self.logger.info(f"all leaves count: {np.round(np.prod(children_num_per_layer[:-1]), 1)}")
         return children_num_per_layer
+
+    @torch.no_grad()
+    def beam_search(self, model:T5ForConditionalGeneration, nbeam:Union[int,list], threshold:int, examine_start_len:int, min_length:int, max_new_tokens:int, **inputs):
+        """
+        Perform relaxed beam search.
+        """
+        bos_token_id = model.config.bos_token_id
+        pad_token_id = model.config.pad_token_id
+        eos_token_id = model.config.eos_token_id
+
+        # B, LQ
+        # the first argument (inputs used as prompts) is None
+        inputs_tensor, model_input_name, model_kwargs = model._prepare_model_inputs(None, bos_token_id, model_kwargs=inputs)
+        batch_size = inputs_tensor.shape[0]
+
+        model_kwargs["output_attentions"] = None
+        model_kwargs["output_hidden_states"] = None
+        model_kwargs["use_cache"] = True
+        # model_kwargs["attention_mask"] = inputs["attention_mask"]
+
+        if model.config.is_encoder_decoder and "encoder_outputs" not in model_kwargs:
+            model_kwargs = model._prepare_encoder_decoder_kwargs_for_generation(
+                inputs_tensor, model_kwargs, model_input_name
+            )
+        # B, 1
+        if model.config.is_encoder_decoder:
+            input_ids = model._prepare_decoder_input_ids_for_generation(
+                batch_size,
+                decoder_start_token_id=None,
+                bos_token_id=bos_token_id,
+                model_kwargs=model_kwargs,
+                device=inputs_tensor.device,
+            )
+        else:
+            # if decoder-only then inputs_tensor has to be `input_ids`
+            input_ids = inputs_tensor
+
+        max_length = max_new_tokens + input_ids.shape[-1]
+        if isinstance(nbeam, list):
+            num_beams = max(nbeam)
+        else:
+            num_beams = nbeam
+
+        # B * K, 1
+        input_ids, model_kwargs = model._expand_inputs_for_generation(
+            input_ids, expand_size=num_beams, is_encoder_decoder=model.config.is_encoder_decoder, **model_kwargs
+        )
+
+        batch_beam_size, cur_len = input_ids.shape
+        beam_scores = torch.zeros((batch_size, num_beams), device=input_ids.device)
+        # only the first beam will be selected during the first beam search iteration, thereby avoiding repetitive input_ids across beams
+        beam_scores[:, 1:] = -1e9
+        beam_scores = beam_scores.view(-1)
+
+        # each batch may have different final candidate size
+        beams = [[] for _ in range(batch_size)]
+        batch_filter = torch.ones(batch_size, dtype=torch.bool, device=input_ids.device)
+        batch_indices = torch.arange(batch_size, device=input_ids.device)
+
+        cur_len = input_ids.shape[-1]
+
+        while True:
+            times = []
+            # times.append(time.time())
+            model_inputs = model.prepare_inputs_for_generation(input_ids, **model_kwargs)
+            outputs = model(**model_inputs, return_dict=True)
+            # times.append(time.time())
+
+            next_token_logits = outputs.logits[:, -1, :]    # (batch_size * num_beams, vocab_size)
+            next_token_scores = torch.log_softmax(next_token_logits, dim=-1)  # (batch_size * num_beams, vocab_size)
+
+            # mask eos_token when cur_len < min_len; mask non-valid tokens with trie
+            mask = torch.full_like(next_token_scores, -float("inf"))
+            for batch_id, beam_sent in enumerate(input_ids.view(batch_size, num_beams, cur_len)):
+                for beam_id, sent in enumerate(beam_sent):
+                    mask[batch_id * num_beams + beam_id, self.get_next_keys(sent.tolist())] = 0
+            next_token_scores_processed = next_token_scores + mask
+
+            if cur_len < min_length:
+                next_token_scores_processed[:, eos_token_id] = -float("inf")
+
+            # the current logits + the previous beam score
+            next_token_scores = next_token_scores_processed + beam_scores[:, None]
+            # reshape for beam search
+            vocab_size = next_token_scores.shape[-1]
+            next_token_scores = next_token_scores.view(batch_size, -1)
+
+            # times.append(time.time())
+            # cache previous num_beams if we input a list for nbeam
+            prev_num_beams = num_beams
+            if isinstance(nbeam, list):
+                num_beams = nbeam[min(cur_len - 1, len(nbeam) - 1)]
+            # find the topk beam per batch
+            # don't need to find top 2k because there will no eos token
+            next_token_scores, next_tokens = torch.topk(
+                next_token_scores, num_beams, dim=1, largest=True, sorted=True
+            )   # (batch_size, num_beams)
+
+            next_beam_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
+            next_tokens = next_tokens % vocab_size
+
+            # we don't need beam scorer to process because the generated sequences must be of the same length
+            beam_scores = next_token_scores.view(-1)
+            beam_next_tokens = next_tokens.view(-1)
+            # bias the beam index to the batch_beam_index
+            # use prev_num_beams because the offset is reletive to the input_ids
+            beam_idx = (next_beam_indices + torch.arange(batch_size, device=input_ids.device).unsqueeze(-1) * prev_num_beams).view(-1)
+
+            # times.append(time.time())
+            input_ids = torch.cat([input_ids[beam_idx, :], beam_next_tokens.unsqueeze(-1)], dim=-1) # B*K, L
+            # increase cur_len
+            cur_len = cur_len + 1
+
+            # update past
+            model_kwargs["past"] = outputs.past_key_values
+            # collect past_key_values corresponding to the selected beams (may duplicate)
+            model_kwargs = self._update_model_kwargs(model_kwargs, batch_size, num_beams, beam_idx)
+
+            # times.append(time.time())
+            if cur_len >= examine_start_len:
+                # check if the beam hypotheses relate to less than 1000 candidates
+                for i, batch in enumerate(input_ids.view(batch_size, num_beams, cur_len).tolist()):
+                    candidates = []
+                    for seq in batch:
+                        candidates.extend(self.keys(prefix=seq))
+                    if len(candidates) <= threshold:
+                        # get the global batch offset
+                        beams[batch_indices[i]].extend(candidates)
+                        batch_filter[i] = False
+
+            # check if all batches are finished
+            if batch_filter.sum() == 0 or cur_len >= max_length:
+                break
+
+            # times.append(time.time())
+            # discard model_kwargs corresponding to the finished batches
+            if batch_filter.sum() < len(batch_filter):
+                # update model_kwargs
+                input_ids = input_ids.unflatten(0, (batch_size, num_beams))[batch_filter].flatten(0,1)
+                beam_scores = beam_scores.unflatten(0, (batch_size, num_beams))[batch_filter].flatten(0,1)
+                for k, v in model_kwargs.items():
+                    if k == "past":
+                        filtered_past = ()
+                        for layer_past_key_values in v:
+                            filtered_layer_past_key_values = ()
+                            for layer_past_key_value in layer_past_key_values:
+                                filtered_layer_past_key_values += (layer_past_key_value.unflatten(0, (batch_size, num_beams))[batch_filter].flatten(0, 1),)
+                            filtered_past += (filtered_layer_past_key_values,)
+                        model_kwargs[k] = filtered_past
+
+                    elif isinstance(v, torch.Tensor):
+                        model_kwargs[k] = v.unflatten(0, (batch_size, num_beams))[batch_filter].flatten(0, 1)
+
+                # update batch filter and batch_size
+                batch_indices = batch_indices[batch_filter]
+                batch_filter = batch_filter[batch_filter]
+                batch_size = len(batch_filter)
+
+            # times.append(time.time())
+            # print(np.diff(np.array(times)))
+        return beams
+
+    def _update_model_kwargs(self, model_kwargs, batch_size, num_beams, beam_idx):
+        reordered_decoder_past = ()
+        for layer_past_states in model_kwargs["past"]:
+            # get the correct batch idx from layer past batch dim
+            # batch dim of `past` is at 2nd position
+            reordered_layer_past_states = ()
+            for layer_past_state in layer_past_states:
+                # need to set correct `past` for each of the four key / value states
+                reordered_layer_past_states = reordered_layer_past_states + (
+                    layer_past_state.index_select(0, beam_idx),
+                )
+            reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
+
+        model_kwargs["past"] = reordered_decoder_past  # 12(layer_num), 4(liner num), (batch_size * num_beam, head_num, cur_len, 768/head_num)
+
+        # cut off beams
+        # TODO: also deal with increasing
+        for k, v in model_kwargs.items():
+            if isinstance(v, torch.Tensor):
+                model_kwargs[k] = v.unflatten(0, (batch_size, -1))[:, :num_beams].flatten(0, 1)
+
+        return model_kwargs
 
 
 

@@ -3,7 +3,7 @@ loader_train: none
 epoch: 20
 batch_size: 32
 
-main_metric: MRR@10
+main_metric: Recall@10
 # interval of testing the model performance
 eval_step: "1e"
 # donot test the model performance before eval_delay steps

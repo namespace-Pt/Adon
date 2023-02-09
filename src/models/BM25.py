@@ -102,7 +102,7 @@ class BM25(BaseSparseModel):
                         text_embeddings[i, j, 0] = tfidf
 
                     if "text_first_mask" in x:
-                        text_first_mask = x["text_first_mask"].squeeze(0).numpy().astype(np.bool)
+                        text_first_mask = x["text_first_mask"].squeeze(0).numpy().astype(bool)
                         text_embeddings[i,:,0][~text_first_mask] = 0
 
                 if self.config.save_encode:

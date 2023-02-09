@@ -1,6 +1,5 @@
 import os
 import torch
-from utils.util import Config
 from .BaseModel import BaseModel
 
 from .BM25 import BM25
@@ -12,7 +11,8 @@ from .DPR import DPR
 from .IVF import IVF, TopIVF, TokIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
-from .Ranker import CrossEncoder
+from .RankT5 import RankT5
+from .CrossEnc import CrossEncoder
 from .UniCOIL import UniCOIL
 from .UniRetriever import UniRetriever
 from .VQ import DistillVQ
@@ -27,6 +27,7 @@ MODEL_MAP = {
     "dpr": DPR,
     "dsi": DSI,
     "ivf": IVF,
+    "rankt5": RankT5,
     "sparta": SPARTA,
     "spladev2": SPLADEv2,
     "topivf": TopIVF,
@@ -39,17 +40,18 @@ MODEL_MAP = {
 class AutoModel(BaseModel):
     @classmethod
     def from_pretrained(cls, ckpt_path, **kwargs):
+        # TODO: return default config for each model
         state_dict = torch.load(ckpt_path, map_location="cpu")
-        # re-initialize the config so the distributed information is properly set
-        config = Config(**state_dict["config"])
 
+        config = state_dict["config"]
         model_name_current = os.path.abspath(ckpt_path).split(os.sep)[-2]
         model_name_ckpt = config.name
+        model_type = model_name_current.split("_")[0].lower()
 
         # override model name
         config.update(**kwargs, name=model_name_current)
-
-        model_type = model_name_current.split("_")[0].lower()
+        # re-initialize the config so the distributed information is properly set
+        config.__post_init__()
 
         try:
             model = MODEL_MAP[model_type](config).to(config.device)

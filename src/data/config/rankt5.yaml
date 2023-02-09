@@ -2,20 +2,27 @@
 defaults:
   - _default
   - base: MSMARCO-passage
-  - model: sparse
-  - index: impact-word
-  - train: neg
-  - eval: retrieve
+  - model: ranker
+  - train: neg-raw
+  - eval: rerank
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
 base:
-  plm: bert
+  plm: t5
 
 model:
-  model_type: deepimpact
-  return_sep_mask: True
+  model_type: rankt5
+  return_pair: true
+  ranking_token: 32089 # <extra_id_10>
+
+  query_prefix: "Query:"
+  text_prefix: "Text:"
 
 train:
+  batch_size: 16
+  learning_rate: 1e-4
   hard_neg_num: 7
-  max_grad_norm: 2.0
+
+eval:
+  loader_rerank: raw

@@ -95,6 +95,7 @@ class BaseModel(nn.Module):
                         new_data[k] = v
                 elif isinstance(v, Mapping):
                     new_data[k] = self._move_to_device(v)
+            new_data = type(data)(new_data)
         elif isinstance(data, torch.Tensor):
             return data.to(device=self.config.device)
         return new_data
@@ -557,7 +558,7 @@ class BaseModel(nn.Module):
             try:
                 if self.config.dataset == "NQ-open":
                     markdown_format_metric = "|".join([str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@20"]), str(metrics["Recall@100"])]) + "|"
-                elif self.config.dataset in ["NQ", "Top300k", "Rand300k"]:
+                elif self.config.dataset in ["NQ", "NQ-url"]:
                     markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
                 else:
                     markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
@@ -677,7 +678,8 @@ class BaseModel(nn.Module):
 
             preprocess_threads = 32
             all_line_count = text_num
-            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.data_root, "PLM", self.config.code_tokenizer))
+
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
 
             arguments = []
             for i in range(preprocess_threads):
@@ -1249,7 +1251,7 @@ class BaseSparseModel(BaseModel):
             text_num = len(loader_text.dataset)
             makedirs(code_path)
 
-            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.data_root, "PLM", self.config.code_tokenizer))
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
 
             # load all saved token ids
             # all codes are led by 0 and padded by -1
@@ -1717,8 +1719,7 @@ class BaseDenseModel(BaseModel):
             text_num = len(loader_text.dataset)
             assignment_path = os.path.join(self.config.cache_root, "cluster", self.name, self.config.cluster_type, "assignments.mmp")
 
-            self.config._set_plm(self.config.code_tokenizer)
-            tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
 
             # generate codes from pre-defined cluster assignments
             if os.path.exists(assignment_path):
@@ -1860,20 +1861,21 @@ class BaseGenerativeModel(BaseModel):
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
             query = self._move_to_device(x["query"])
+            B = query["input_ids"].shape[0]
+            N = min(self.config.hits, self.config.nbeam)
             outputs = self._generate(
                 **query,
                 min_length=None,
-                max_new_tokens=self.config.code_length,
+                max_new_tokens=self.config.code_length - 1,
                 do_sample=False,
                 return_dict_in_generate=True,
                 output_scores=True,
-                num_return_sequences=self.config.hits,
+                num_return_sequences=N,
                 num_beams=self.config.nbeam,
                 length_penalty=self.config.length_penalty,
                 prefix_allowed_tokens_fn=prefix_allowed_tokens_fn
             )
 
-            B, N = query["input_ids"].shape[0], self.config.hits
             codes = outputs.sequences.view(B, N, -1).cpu().numpy()   # B, n, L; n is the num_return_sequences
             scores = outputs.sequences_scores.view(B, N).cpu().numpy()    # B, n
             # cache the codes

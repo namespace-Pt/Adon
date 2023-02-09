@@ -11,7 +11,7 @@ eval_mode: rerank
 # evaluation metrics, seperated by colon
 eval_metric: [mrr,recall]
 # the cutoff for each evaluation metric
-eval_metric_cutoff: [10,100,1000]
+eval_metric_cutoff: [1,5,10,100,1000]
 # the cutoff for retrieval result
 hits: 1000
 

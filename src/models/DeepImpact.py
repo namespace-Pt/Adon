@@ -18,7 +18,6 @@ class DeepImpact(UniCOIL):
         self.tokenProject = nn.Sequential(
             nn.Linear(plm_dim, plm_dim),
             nn.ReLU(),
-            nn.Dropout(0.2),
             nn.Linear(plm_dim, 1),
             nn.ReLU()
         )

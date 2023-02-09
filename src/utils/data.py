@@ -56,7 +56,6 @@ class BaseDataset(Dataset):
                 self.text_num = len(self.text_token_ids)
 
             elif load_text == "raw":
-                text_suffix = []
                 text_name = "collection.tsv"
 
                 corpus = []
@@ -69,6 +68,8 @@ class BaseDataset(Dataset):
                         for col_idx in config.text_col:
                             text.append(columns[col_idx].strip())
                         text = seperator.join(text)
+                        if self.config.get("text_prefix"):
+                            text = " ".join([self.config.text_prefix, text])
                         corpus.append(text)
                 self.corpus = np.array(corpus, dtype=object)
                 self.text_num = len(self.corpus)
@@ -105,8 +106,10 @@ class BaseDataset(Dataset):
                 load_query = load_query.split("-")[0]
                 with open(os.path.join(config.data_root, config.dataset, f"queries.{load_query}.small.tsv")) as f:
                     for line in f:
-                        parsed_input = line.strip().split("\t")[1]
-                        queries.append(parsed_input)
+                        query = line.strip().split("\t")[1]
+                        if self.config.get("query_prefix"):
+                            query = " ".join([self.config.query_prefix, query])
+                        queries.append(query)
                 self.queries = np.array(queries, dtype=object)
                 self.query_num = len(self.queries)
 
@@ -284,7 +287,7 @@ class TrainDataset(BaseDataset):
 
         if self.config.get("return_sep_mask"):
             query_token_id = np.array(query["input_ids"])
-            sep_pos = ((query_token_id == self.cls_token_id) + (query_token_id == self.sep_token_id)).astype(np.bool)
+            sep_pos = ((query_token_id == self.cls_token_id) + (query_token_id == self.sep_token_id)).astype(bool)
             query_sep_mask = np.array(query["attention_mask"], dtype=np.int64)
             # mask [SEP] and [CLS]
             query_sep_mask[sep_pos] = 0
@@ -376,7 +379,7 @@ class TextDataset(BaseDataset):
             return_dict["text_embedding"] = self.text_embeddings[index].astype(np.float32)
 
         if self.config.get("return_first_mask"):
-            text_first_mask = np.zeros(self.config.text_length, dtype=np.bool)
+            text_first_mask = np.zeros(self.config.text_length, dtype=bool)
             token_set = set()
             for i, token_id in enumerate(text["input_ids"]):
                 if token_id in self.special_token_ids:
@@ -564,7 +567,7 @@ class RawTripleTrainDataset(IterableDataset):
 
                 if self.config.get("return_sep_mask"):
                     query_token_id = np.array(query["input_ids"])
-                    sep_pos = ((query_token_id == self.cls_token_id) + (query_token_id == self.sep_token_id)).astype(np.bool)
+                    sep_pos = ((query_token_id == self.cls_token_id) + (query_token_id == self.sep_token_id)).astype(bool)
                     query_sep_mask = np.array(query["attention_mask"], dtype=np.int64)
                     # mask [SEP] and [CLS]
                     query_sep_mask[sep_pos] = 0

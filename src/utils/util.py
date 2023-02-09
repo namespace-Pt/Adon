@@ -816,22 +816,17 @@ class Config(DotDict):
             self.load_ckpt = "best"
         if self.mode in ["encode", "encode-query", "encode-text"]:
             self.save_encode = True
-
         if self.mode == "train" and self.debug:
             self.eval_step = 10
             self.eval_delay = 0
+            self.save_ckpt = "debug"
+
         if self.dataset == "LECARD":
             if self.get("index_type") in ["bm25", "impact-tok", "impact-word"]:
                 self.language = "zh"
             if self.get("eval_metric"):
                 self.eval_metric = "mrr,map,precision,ndcg".split(",")
                 self.eval_metric_cutoff = [5, 10, 20, 30]
-        elif self.dataset in ["NQ", "NQ-url"]:
-            if self.get("eval_metric"):
-                self.eval_metric_cutoff = [1, 5, 10, 100, 1000]
-            if self.get("index_type") == "bm25":
-                self.k1 = 1.5
-                self.b = 0.75
         elif self.dataset == "NQ-open":
             if self.get("main_metric"):
                 self.main_metric = "Recall@10"

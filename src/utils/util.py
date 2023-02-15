@@ -34,6 +34,12 @@ def save_pickle(obj, path:str):
         return pickle.dump(obj, f)
 
 
+def load_attributes(self, foreign_dataset, key_prefix, exclude_keys=[]):
+    for k, v in vars(foreign_dataset).items():
+        if k.startswith(key_prefix) and k not in exclude_keys:
+            setattr(self, k, v)
+
+
 def load_from_previous(model:torch.nn.Module, path:str):
     """
     Load checkpoint from the older version of Uni-Retriever, only load model parameters and overrides the config by the current config.

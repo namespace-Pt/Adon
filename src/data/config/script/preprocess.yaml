@@ -16,5 +16,7 @@ base:
 do_text: true
 do_query: true
 
+query_set: [train, dev]
+
 pretokenize: true
 tokenize_thread: 32

@@ -13,5 +13,7 @@ base:
   # default to evaluation mode
   mode: script
 
+query_set: [train]
 hard_neg_type: BM25
-name: default
+save_name: default
+hits: 200

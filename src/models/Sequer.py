@@ -162,7 +162,7 @@ class Sequer(BaseGenerativeModel):
                 model=self.plm,
                 nbeam=self.config.nbeam,
                 threshold=self.config.beam_trsd,
-                examine_start_len=4,
+                trsd_start_len=self.config.trsd_start_len,
                 min_length=0,
                 max_new_tokens=self.config.code_length - 1,
                 **query,

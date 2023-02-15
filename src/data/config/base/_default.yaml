@@ -6,3 +6,5 @@ seed: 42
 mode: train
 # the device to run the model or script
 device: 0
+
+data_format: "memmap"

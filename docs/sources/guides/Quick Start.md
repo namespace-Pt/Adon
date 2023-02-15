@@ -2,27 +2,31 @@
 
 In this tutorial, you will first learn to **reproduce** the result of a sparse retriever [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) and a dense retriever [RetroMAE](https://arxiv.org/abs/2205.12035) on MSMARCO passage collection.
 
-Then you will learn how to **train** a new sparse retriever [UniCOIL](https://arxiv.org/abs/2106.14807) and a dense retriever [DPR](https://arxiv.org/abs/2004.04906) on MSMARCO passage collection.
+Then you will learn how to **train** a basic dense retriever [DPR](https://arxiv.org/abs/2004.04906) and sparse retriever [UniCOIL](https://arxiv.org/abs/2106.14807) on MSMARCO passage collection.
 
 
 ## Prepare Data
 The very first thing you should do is to download the MSMARCO passage data. You can directly download the files from [Google Drive](https://drive.google.com/file/d/185HvB-OWlTAtFyB9RePTL7LnWURcYDCG/view?usp=share_link). The corpus in the drive is slightly different from the offical one: it contains the ***title*** of each passage, which can always lead to better performance of sparse/dense models.
 
-The file is actually a `.tar.gz` file, and you should untar it wherever you like. If you save all the uncompressed files in `/home/user/Data`, you should modify the `data/config/base/_default.yaml` to tell the programme where to find the data by changing `data_root` to `/home/user/Data`.
+The file is actually a `.tar.gz` file, and you should untar it wherever you like.  Remember to tell the program where to find your data in `data/config/base/_default.yaml`:
+- If you save all the uncompressed files in `/home/user/Data`, you should set `data_root: /home/user/Data`. 
+- Also, change `plm_root` to a valid location, where the language models downloaded from huggingface will be stored.
 
-Adon defaults to use the efficient `numpy.memmap` to save the tokenzied corpus, which can reduce memory usage and speed up data loAdong. To use this feature, run
+*Adon* aggregates all configurations for scripts and models in `data/config` using [hydra](https://github.com/facebookresearch/hydra). So in the following, if you want to modify some settings, go to `data/config` and find the corresponding file.
+
+Adon defaults to use the efficient `numpy.memmap` to save the tokenzied corpus, which can reduce memory usage and speed up data loading. To use this feature, run
 ```bash
 # all the following commands are executed under the src folder
 cd src
 
-python -m scripts.preprocess ++max_text_length=256 ++max_query_length=64
+python -m scripts.preprocess
 ```
-where `max_text_length` and `max_query_length` define the maximum length of the passages/queries respectively. The default value of `max_text_length` and `max_query_length` is defined in `data/config/base/MSMARCO-passage.yaml`.
+- If you want to modify the number of thread used in tokenization, go to check `data/config/script/preprocess.yaml`.
 
 So far, we have finished all the preperation steps. Lets dive in.
 
 ## Reproducing BM25
-Adon integrates the efficient Lucene searcher from Anserini, which requires JDK11 to work. You should first install jdk11 by
+Adon integrates the efficient Lucene searcher from [Anserini](https://github.com/castorini/anserini), which requires JDK11 to work. You should first install jdk11 by
 ```bash
 cd /the/path/you/like
 wget https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_linux-x64_bin.tar.gz
@@ -37,6 +41,8 @@ You can now run the following to reproduce BM25 with the default `k1=0.82` and `
 ```bash
 python run.py BM25
 ```
+- To modify these configurations, go to `data/config/index/bm25.yaml`.
+
 The indexing and evaluating should finish within 10 minutes. The metrics will be printed at console, and also logged at `performance.log` The result should be:
 |MRR@10|Recall@10|Recall@100|Recall@1000|
 |:-:|:-:|:-:|:-:|
@@ -44,15 +50,14 @@ The indexing and evaluating should finish within 10 minutes. The metrics will be
 
 
 ## Reproducing RetroMAE
-RetroMAE is a powerful pre-trained language model specifically designed for dense retrieval. For pre-trained models like BERT and RetroMAE, Adon will permanently download them in a given folder and directly load from the folder afterwards. You should specify the place you want to store by specifying `plm_root` in `data/config/base/_default.yaml`.
+RetroMAE is a powerful pre-trained language model specifically designed for dense retrieval. For pre-trained models like BERT and RetroMAE from [huggingface](https://huggingface.co/docs/transformers/v4.21.3/en/index), Adon will permanently download them in a given folder and directly load from the folder afterwards. You should specify the place you want to store by specifying `plm_root` in `data/config/base/_default.yaml`.
 
 Then, just run
 ```bash
-torchrun --nproc_per_node=2 run.py RetroMAE ++save_encode
+torchrun --nproc_per_node=2 run.py RetroMAE
 ```
 - `python` is replaced with `torchrun` because we start the process in distributed mode
 - `--nproc_per_node` denotes the number of GPUs to be used
-- `save_encode` means saving the encoded vectors at `data/cache/MSMARCO-passage/encode/RetroMAE/`
 
 The result should be (or similar to):
 |MRR@10|Recall@10|Recall@100|Recall@1000|
@@ -76,7 +81,7 @@ Then, collect the non-ground-truth documents from the top ranked result by
 ```bash
 python -m scripts.negative ++hard_neg_type=BM25
 ```
-This command automatically loads the retrieval result generated above (at `data/cache/MSMARCO-passage/retrieve/BM25/train/retrieval_result.pkl`), filters out the ground-truth passages and generates the dictionary mapping a query to its BM25 hard negatives, stored at `data/cache/MSMARCO-passage/dataset/train/negatives_BM25.pkl`.
+This command automatically loads the retrieval result generated above (at `data/cache/MSMARCO-passage/retrieve/BM25/train/retrieval_result.pkl`), filters out the ground-truth passages and generates the dictionary mapping a query to its BM25 hard negatives, stored at `data/cache/MSMARCO-passage/dataset/query/train/negatives_BM25.pkl`.
 
 Finally, launch the training for DPR model:
 ```bash
@@ -95,7 +100,7 @@ UniCOIL is a sparse model relying on the contextualized weights of overlapping t
 python run.py UniCOIL
 
 # use multiple gpus
-torchrun --nproc_per_node=4 run.py DPR
+torchrun --nproc_per_node=4 run.py UniCOIL
 ```
 Again, check `data/config/unicoil.yaml` to see the default arguments of UniCOIL.
 

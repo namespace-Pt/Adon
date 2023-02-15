@@ -4,7 +4,7 @@ defaults:
   - base: NQ
   - model: generative
   - index: trie
-  - train: nmt
+  - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
   - _self_
@@ -26,6 +26,9 @@ index:
   index_type: trie
 
 train:
+  # only query-pos pair
+  hard_neg_type: none
+
   learning_rate: 1e-3
   scheduler: linear
   batch_size: 100

@@ -707,8 +707,11 @@ class AnseriniImpactIndex(BaseAnseriniIndex):
 
 
     def _quantize(self, token_weights, quantize_bit=None):
-        # float32 is not serializable by json
-        token_weights = np.ceil(token_weights * 100).astype(int)
+        if quantize_bit is not None:
+            scale = (1<<quantize_bit) / token_weights.max()
+        else:
+            scale = 100
+        token_weights = np.ceil(token_weights * scale).astype(int)
         return token_weights
 
 
@@ -1487,7 +1490,7 @@ class TrieIndex(BaseTrieIndexIndex):
         return children_num_per_layer
 
     @torch.no_grad()
-    def beam_search(self, model:T5ForConditionalGeneration, nbeam:Union[int,list], threshold:int, examine_start_len:int, min_length:int, max_new_tokens:int, **inputs):
+    def beam_search(self, model:T5ForConditionalGeneration, nbeam:Union[int,list], threshold:int, trsd_start_len:int, min_length:int, max_new_tokens:int, **inputs):
         """
         Perform relaxed beam search.
         """
@@ -1604,7 +1607,7 @@ class TrieIndex(BaseTrieIndexIndex):
             model_kwargs = self._update_model_kwargs(model_kwargs, batch_size, num_beams, beam_idx)
 
             # times.append(time.time())
-            if cur_len >= examine_start_len:
+            if cur_len >= trsd_start_len:
                 # check if the beam hypotheses relate to less than 1000 candidates
                 for i, batch in enumerate(input_ids.view(batch_size, num_beams, cur_len).tolist()):
                     candidates = []

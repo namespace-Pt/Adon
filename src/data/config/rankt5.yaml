@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: ranker
-  - train: neg-raw
+  - train: neg
   - eval: rerank
   # add _self_ here so that the following arguments can be rewritten
   - _self_

@@ -79,7 +79,8 @@ def train(model, loaders):
     from .data import prepare_train_data, default_collate
 
     config = model.config
-    train_dataset = prepare_train_data(config)
+    text_dataset = loaders["text"].dataset
+    train_dataset = prepare_train_data(config, text_dataset)
 
     args = AdonTrainingArguments(
         do_train=True,

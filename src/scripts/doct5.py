@@ -1,3 +1,7 @@
+# on zhiyuan machine, must import utils first to load faiss before torch
+from utils.util import synchronize, save_pickle, makedirs, Config
+from utils.data import prepare_data
+
 import os
 import sys
 import torch
@@ -5,8 +9,6 @@ import numpy as np
 from tqdm import tqdm
 from multiprocessing import Pool
 from transformers import T5ForConditionalGeneration, AutoTokenizer
-from utils.util import synchronize, Config
-from utils.data import prepare_data
 
 import hydra
 from pathlib import Path
@@ -16,24 +18,27 @@ def get_config(hydra_config: OmegaConf):
     config._from_hydra(hydra_config)
 
 
-def main(config):
+def main(config:Config):
     loaders = prepare_data(config)
     loader_text = loaders["text"]
 
     max_length = config.query_length
     query_per_doc = config.query_per_doc
-    mmp_path = os.path.join(config.cache_root, "dataset", "text", ",".join([str(x) for x in config.text_col]), "t5", "doct5.mmp")
-    doct5_path = os.path.join(config.data_root, config.dataset, "doct5.tsv")
+
+    doct5_path = os.path.join(config.data_root, config.dataset, "queries.doct5.small.tsv")
+    cache_dir = os.path.join(config.cache_root, "dataset", "query", "doct5")
+    mmp_path = os.path.join(cache_dir, config.plm_tokenizer, "token_ids.mmp")
+    makedirs(mmp_path)
 
     model = T5ForConditionalGeneration.from_pretrained(config.plm_dir).to(config.device)
     tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
 
     # generate psudo queries
     if not config.load_encode:
-        query_token_ids = np.zeros((len(loader_text.sampler), query_per_doc, max_length), dtype=np.int32)
-
+        # -1 is the pad_token_id
+        query_token_ids = np.zeros((len(loader_text.sampler), query_per_doc, max_length), dtype=np.int32) - 1
+        start_idx = end_idx = 0
         with torch.no_grad():
-            start_idx = end_idx = 0
             for i, x in enumerate(tqdm(loader_text, ncols=100, desc="Generating Queries")):
                 text = x["text"]
                 for k, v in text.items():
@@ -51,12 +56,15 @@ def main(config):
                 end_idx += B
                 query_token_ids[start_idx: end_idx, :, :sequences.shape[-1]] = sequences
                 start_idx = end_idx
+        
+        # mask eos tokens
+        query_token_ids[query_token_ids == config.special_token_ids["sep"][1]] = -1
 
         # use memmap to temperarily save the generated token ids
         if config.is_main_proc:
             query_token_ids_mmp = np.memmap(
                 mmp_path,
-                shape=(len(loader_text.dataset), query_per_doc, max_length),
+                shape=(len(loader_text.dataset) * query_per_doc, max_length),
                 dtype=np.int32,
                 mode="w+"
             )
@@ -68,88 +76,42 @@ def main(config):
             mode="r+"
         ).reshape(len(loader_text.dataset), query_per_doc, max_length)
         query_token_ids_mmp[loader_text.sampler.start: loader_text.sampler.end] = query_token_ids
+        synchronize()
 
-        if config.is_main_proc:
+        if config.on_main_proc:
+            # decode to strings and write to the query file
             with open(doct5_path, "w") as f:
-                for sequences in tqdm(query_token_ids, ncols=100, desc="Decoding"):
-                    texts = tokenizer.batch_decode(sequences, skip_special_tokens=True)    # N
-                    f.write("\t".join(texts) + "\n")
+                for i, token_ids in enumerate(tqdm(query_token_ids_mmp.reshape(-1, max_length), ncols=100, desc="Decoding")):
+                    seq = tokenizer.decode(token_ids[token_ids != -1], skip_special_tokens=True)    # N
+                    f.write("\t".join([str(i), seq]) + "\n")
 
-    # tokenize psudo queries by preprocess_plm and save it in the dataset/text/preprocess_plm/doct5.mmp
-    # only need to do so when we want to re-tokenize the generated query by another plm
-    if config.is_main_proc and config.plm_tokenizer != "t5":
+    if config.is_main_proc:
         # load all saved token ids
         query_token_ids = np.memmap(
             mmp_path,
             dtype=np.int32,
             mode="r+"
-        ).reshape(len(loader_text.dataset), query_per_doc, max_length)
+        ).reshape(len(loader_text.dataset) * query_per_doc, max_length)
 
-        cache_dir = os.path.join(config.cache_root, "dataset", "text", ",".join([str(x) for x in config.text_col]), config.plm_tokenizer)
-        os.makedirs(cache_dir, exist_ok=True)
-        tokenize_thread = config.tokenize_thread
-        all_line_count = len(loader_text.dataset)
-
-        config._set_plm(already_on_main_proc=True)
-        tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
-        config.logger.info("tokenizing {} in {} threads, output file will be saved at {}".format(doct5_path, tokenize_thread, cache_dir))
-
-        arguments = []
-        # create memmap first
-        token_ids = np.memmap(
-            os.path.join(cache_dir, "doct5.mmp"),
-            shape=(all_line_count, query_per_doc, max_length),
-            mode="w+",
-            dtype=np.int32
-        )
-
-        for i in range(tokenize_thread):
-            start_idx = round(all_line_count * i / tokenize_thread)
-            end_idx = round(all_line_count * (i+1) / tokenize_thread)
-            arguments.append((doct5_path, cache_dir, all_line_count, start_idx, end_idx, query_per_doc, tokenizer, max_length))
-
-        with Pool(tokenize_thread) as p:
-            id2indexs = p.starmap(_tokenize_text, arguments)
-
-
-def _tokenize_text(input_path, output_dir, all_line_count, start_idx, end_idx, query_per_doc, tokenizer, max_length):
-    """
-    tokenize the input text, do padding and truncation, then save the token ids, token_lengths, text ids
-
-    Args:
-        input_path: input text file path
-        output_dir: directory of output numpy arrays
-        start_idx: the begining index to read
-        end_idx: the ending index
-        tokenizer: transformer tokenizer
-        max_length: max length of tokens
-        text_type: corpus class
-    """
-    pad_token_id = -1
-
-    token_ids = np.memmap(
-        os.path.join(output_dir, "doct5.mmp"),
-        shape=(all_line_count, query_per_doc, max_length),
-        mode="r+",
-        dtype=np.int32
-    )
-
-    with open(input_path, 'r') as f:
-        pbar = tqdm(total=end_idx-start_idx, desc="Tokenizing", ncols=100, leave=False)
-        for idx, line in enumerate(f):
-            if idx < start_idx:
-                continue
-            if idx >= end_idx:
-                break
-
-            pseudo_queries = line.split('\t')
-            for j, query in enumerate(pseudo_queries):
-                token_id = tokenizer.encode(query, add_special_tokens=False, truncation=True, max_length=max_length)
-                token_length = len(token_id)
-
-                token_ids[idx, j] = token_id + [pad_token_id] * (max_length - token_length)
-            pbar.update(1)
-        pbar.close()
+        # generate qrels and positives to be used in QueryDataset
+        qid2index = {str(i): i for i in range(query_token_ids.shape[0])}
+        qrels = []
+        positives = {}
+        for i in range(len(loader_text.dataset)):
+            for j in range(query_per_doc):
+                qidx = j + i * query_per_doc
+                qrels.append((qidx, i))
+                positives[qidx] = [i]
+        save_pickle(qid2index, os.path.join(cache_dir, "id2index.pkl"))
+        save_pickle(qrels, os.path.join(cache_dir, "qrels.pkl"))
+        save_pickle(positives, os.path.join(cache_dir, "positives.pkl"))
+        
+        # when we want to tokenize the generated queries with another plm
+        config._set_plm(config.dest_plm, already_on_main_proc=True)
+        if config.plm_tokenizer != "t5":
+            from scripts.preprocess import tokenize_to_memmap
+            tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
+            tokenize_to_memmap(doct5_path, cache_dir, len(qid2index), max_length, tokenizer, config.plm_tokenizer, config.tokenize_thread, is_query=True)
 
 
 if __name__ == "__main__":
@@ -160,5 +122,4 @@ if __name__ == "__main__":
 
     config = Config()
     get_config()
-    config._set_plm("doct5")
     main(config)

@@ -5,7 +5,7 @@ defaults:
   - model: ranker
   - index: trie
   - train: neg
-  - eval: rerank
+  - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -14,7 +14,7 @@ base:
 
 model:
   model_type: sequer
-  train_scheme: contra
+  train_scheme: contra+gen
   # beam size
   nbeam: 10
   # length penalty in generic beam scoring
@@ -22,7 +22,8 @@ model:
   # how to restore missing branches
   restore: none
   # threshold for relaxed beam search
-  beam_trsd: 0
+  beam_trsd: 100
+  trsd_start_len: 5
 
   return_code: true
   code_type: UniCOIL-weight
@@ -35,7 +36,9 @@ train:
   learning_rate: 3e-5
   hard_neg_type: ANCE
   hard_neg_num: 49
+  main_metric: MRR@10
 
 eval:
-  candidate_type: DPR_hn
+  eval_batch_size: 10
+  # candidate_type: DPR_hn
   parallel: query

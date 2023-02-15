@@ -4,7 +4,6 @@ import torch
 import psutil
 import numpy as np
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
 import torch.distributed as dist
 from tqdm import tqdm
@@ -13,7 +12,6 @@ from pathlib import Path
 from collections import defaultdict
 from transformers import AutoTokenizer, AutoModel
 from torch.utils.data import DataLoader
-from transformers import get_linear_schedule_with_warmup
 from utils.util import load_pickle, save_pickle, compute_metrics, compute_metrics_nq, makedirs, readlink, synchronize, BaseOutput, MasterLogger, Config
 from utils.index import *
 
@@ -62,20 +60,22 @@ class BaseModel(nn.Module):
         self.logger = MasterLogger(self.name)
 
 
-    def _set_encoder(self):
+    def _set_encoder(self, transformer_class=None):
+        if transformer_class is None:
+            transformer_class = AutoModel
+
         if self.config.get("untie_encoder"):
-            self.queryEncoder = AutoModel.from_pretrained(self.config.plm_dir)
-            self.textEncoder = AutoModel.from_pretrained(self.config.plm_dir)
+            self.queryEncoder = transformer_class.from_pretrained(self.config.plm_dir)
+            self.textEncoder = transformer_class.from_pretrained(self.config.plm_dir)
 
         else:
-            plm = AutoModel.from_pretrained(self.config.plm_dir)
+            plm = transformer_class.from_pretrained(self.config.plm_dir)
             self.queryEncoder = plm
             self.textEncoder = plm
 
         if hasattr(self.queryEncoder, "pooler"):
             self.queryEncoder.pooler = None
             self.textEncoder.pooler = None
-
 
 
     def _move_to_device(self, data, exclude_keys=["text_idx", "query_idx"]):
@@ -519,7 +519,7 @@ class BaseModel(nn.Module):
 
             if self.config.dataset == "NQ-open":
                 if self.config.eval_set == "train":
-                    ground_truth_path = os.path.join(self.config.cache_root, "dataset", self.config.eval_set, "positives.pkl")
+                    ground_truth_path = os.path.join(self.config.cache_root, "dataset", "query", self.config.eval_set, "positives.pkl")
                     ground_truth = load_pickle(ground_truth_path)
                     metrics = compute_metrics(retrieval_result, ground_truth, cutoffs=self.config.eval_metric_cutoff)
                 elif self.config.eval_set == "dev":
@@ -527,7 +527,7 @@ class BaseModel(nn.Module):
                 else:
                     raise NotImplementedError
             else:
-                ground_truth_path = os.path.join(self.config.cache_root, "dataset", self.config.eval_set, "positives.pkl")
+                ground_truth_path = os.path.join(self.config.cache_root, "dataset", "query", self.config.eval_set, "positives.pkl")
                 ground_truth = load_pickle(ground_truth_path)
                 metrics = compute_metrics(retrieval_result, ground_truth, metrics=self.config.eval_metric, cutoffs=self.config.eval_metric_cutoff)
 
@@ -1114,7 +1114,7 @@ class BaseSparseModel(BaseModel):
             os.makedirs(self.retrieve_dir, exist_ok=True)
 
             tid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", "text", "id2index.pkl"))
-            qid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", self.config.eval_set, "id2index.pkl"))
+            qid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", "query", self.config.eval_set, "id2index.pkl"))
 
             query_path = f"{self.config.data_root}/{self.config.dataset}/queries.{self.config.eval_set}.small.tsv"
 
@@ -1914,6 +1914,3 @@ class BaseGenerativeModel(BaseModel):
         return retrieval_result
 
 
-@synchronize
-def test(config):
-    print(f"fuck {config.rank}")

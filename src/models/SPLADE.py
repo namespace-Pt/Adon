@@ -9,11 +9,11 @@ class SPLADEv2(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self._set_encoder()
+        self._set_encoder(AutoModelForMaskedLM)
 
         if self.config.mode == "train":
             self._step = 0
-            self._lambda_warmup_step = config.lambda_warmup_step
+            self._lambda_warmup_step = config.lambda_warmup_step // config.world_size
 
         self._rebuild_index = True
         self._skip_special_tokens = False
@@ -58,8 +58,8 @@ class SPLADEv2(BaseSparseModel):
 
         x = self._move_to_device(x)
 
-        query_embedding = self._encode(**x["query"])	# B, V
-        text_embedding = self._encode(**x["text"])	# B*(1+N), V
+        query_embedding = self._encode_query(**x["query"])	# B, V
+        text_embedding = self._encode_text(**x["text"])	# B*(1+N), V
 
         if self.config.is_distributed and self.config.enable_all_gather:
             query_embedding = self._gather_tensors(query_embedding)
@@ -87,7 +87,7 @@ class SPLADEv2(BaseSparseModel):
 
     def encode_text_step(self, x):
         text = self._move_to_device(x["text"])
-        text_embedding = self._encode(**text)
+        text_embedding = self._encode_text(**text)
 
         text_token_weight, text_token_id = text_embedding.topk(k=self._text_length, dim=1)  # B, K
 
@@ -97,7 +97,7 @@ class SPLADEv2(BaseSparseModel):
 
     def encode_query_step(self, x):
         query = self._move_to_device(x["query"])
-        query_embedding = self._encode(**query)
+        query_embedding = self._encode_query(**query)
 
         query_token_weight, query_token_id = query_embedding.topk(k=self._query_length, dim=1)  # B, K
 

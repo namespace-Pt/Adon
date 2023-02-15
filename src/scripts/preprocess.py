@@ -51,7 +51,7 @@ def init_query_and_qrel(query_path:str, qrel_path:str, cache_dir:str, tid2index:
         else:
             valid_queries.add(query_id)
 
-    logger.info("valid query number: {}".format(len(valid_queries)))
+    print("valid query number: {}".format(len(valid_queries)))
 
     qid2index = {}
     valid_query_path = ".".join([*query_path.split(".")[:-1], "small", "tsv"])
@@ -109,7 +109,7 @@ def tokenize_to_memmap(input_path:str, cache_dir:str, num_rec:int, max_length:in
     cache_dir_with_plm = os.path.join(cache_dir, tokenizer_type)
     os.makedirs(cache_dir_with_plm, exist_ok=True)
 
-    logger.info(f"tokenizing {input_path} in {tokenize_thread} threads, output file will be saved at {cache_dir_with_plm}")
+    print(f"tokenizing {input_path} in {tokenize_thread} threads, output file will be saved at {cache_dir_with_plm}")
 
     arguments = []
 
@@ -195,8 +195,6 @@ if __name__ == "__main__":
         if "=" not in arg:
             sys.argv[i] += "=true"
 
-    logger = logging.getLogger("Preprocess")
-
     config = Config()
     get_config()
 
@@ -217,15 +215,9 @@ if __name__ == "__main__":
     if config.do_query:
         tid2index = load_pickle(os.path.join(text_dir, "id2index.pkl"))
 
-        query_path = os.path.join(data_dir, "queries.train.tsv")
-        qrel_path = os.path.join(data_dir, "qrels.train.tsv")
-        qid2index = init_query_and_qrel(query_path, qrel_path, os.path.join(cache_dir, "train"), tid2index)
-        if config.pretokenize:
-            tokenize_to_memmap(os.path.join(data_dir, "queries.train.small.tsv"), os.path.join(cache_dir, "train"), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)
-
-        query_path = os.path.join(data_dir, "queries.dev.tsv")
-        qrel_path = os.path.join(data_dir, "qrels.dev.tsv")
-        qid2index = init_query_and_qrel(query_path, qrel_path, os.path.join(cache_dir, "dev"), tid2index)
-        if config.pretokenize:
-            tokenize_to_memmap(os.path.join(data_dir, "queries.dev.small.tsv"), os.path.join(cache_dir, "dev"), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)
-
+        for query_set in config.query_set:
+            query_path = os.path.join(data_dir, f"queries.{query_set}.tsv")
+            qrel_path = os.path.join(data_dir, f"qrels.{query_set}.tsv")
+            qid2index = init_query_and_qrel(query_path, qrel_path, os.path.join(cache_dir, "query", query_set), tid2index)
+            if config.pretokenize:
+                tokenize_to_memmap(os.path.join(data_dir, f"queries.{query_set}.small.tsv"), os.path.join(cache_dir, "query", query_set), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)

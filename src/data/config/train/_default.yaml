@@ -1,4 +1,6 @@
 loader_train: none
+# query set for training
+train_set: ["train"]
 
 epoch: 20
 batch_size: 32

@@ -15,7 +15,6 @@ model:
   token_dim: 32
 
 index:
-  bow_state: not
   return_first_mask: false
 
 train:

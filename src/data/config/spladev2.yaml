@@ -21,7 +21,6 @@ model:
   query_decode_k: 64
 
 index:
-  bow_state: is
   return_first_mask: false
 
 train:

@@ -73,3 +73,6 @@ autodoc_mock_imports = ["faiss", "torch", "torch_scatter", "transformers", "pand
 
 # do not change the order of classes or functions in the module
 autodoc_member_order = 'bysource'
+
+# add numbered references
+numfig = True

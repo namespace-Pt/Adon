@@ -6,22 +6,21 @@ Then you will learn how to **train** a basic dense retriever [DPR](https://arxiv
 
 
 ## Prepare Data
-The very first thing you should do is to download the MSMARCO passage data. You can directly download the files from [Google Drive](https://drive.google.com/file/d/185HvB-OWlTAtFyB9RePTL7LnWURcYDCG/view?usp=share_link). The corpus in the drive is slightly different from the offical one: it contains the ***title*** of each passage, which can always lead to better performance of sparse/dense models.
+The very first thing you should do is to download the MSMARCO passage data. You can directly download the files from [Google Drive](https://drive.google.com/file/d/185HvB-OWlTAtFyB9RePTL7LnWURcYDCG/view?usp=share_link). More details are {doc}`here <data>`. 
 
-The file is actually a `.tar.gz` file, and you should untar it wherever you like.  Remember to tell the program where to find your data in `data/config/base/_default.yaml`:
-- If you save all the uncompressed files in `/home/user/Data`, you should set `data_root: /home/user/Data`. 
-- Also, change `plm_root` to a valid location, where the language models downloaded from huggingface will be stored.
+The file is actually a `.tar.gz` file, and you should untar it wherever you like.  Remember to tell the program where to find your data:
+- If you save all the uncompressed files in `/home/user/Data`, you should set `data_root: /home/user/Data` in `src/data/config/base/_default.yaml`. 
+- Also, change `plm_root` to a valid location on your system, where the language models downloaded from huggingface will be stored.
 
-*Adon* aggregates all configurations for scripts and models in `data/config` using [hydra](https://github.com/facebookresearch/hydra). So in the following, if you want to modify some settings, go to `data/config` and find the corresponding file.
+*Adon* aggregates all configurations for scripts and models in `data/config` using [hydra](https://github.com/facebookresearch/hydra). So in the following, if you want to modify some settings, go to `data/config` and find the corresponding file. Find more details {doc}`here <configs>`.
 
-Adon defaults to use the efficient `numpy.memmap` to save the tokenzied corpus, which can reduce memory usage and speed up data loading. To use this feature, run
+*Adon* also needs to create necessary files based on the downloaded data, it also defaults to use the efficient `numpy.memmap` to save the tokenzied corpus, which can reduce memory usage and speed up data loading. Run:
 ```bash
 # all the following commands are executed under the src folder
 cd src
-
 python -m scripts.preprocess
 ```
-- If you want to modify the number of thread used in tokenization, go to check `data/config/script/preprocess.yaml`.
+This should results in creating several files in `src/data/cache/MSMARCO-passage/dataset/`. You can interact with the data in `src/notebooks/data.ipynb`.
 
 So far, we have finished all the preperation steps. Lets dive in.
 
@@ -41,9 +40,9 @@ You can now run the following to reproduce BM25 with the default `k1=0.82` and `
 ```bash
 python run.py BM25
 ```
-- To modify these configurations, go to `data/config/index/bm25.yaml`.
+- To modify `k1`, `b`, go to `data/config/index/bm25.yaml`.
 
-The indexing and evaluating should finish within 10 minutes. The metrics will be printed at console, and also logged at `performance.log` The result should be:
+The indexing and evaluating should finish within 10 minutes. The metrics will be printed at console, and also logged at `performance.log`, which should be:
 |MRR@10|Recall@10|Recall@100|Recall@1000|
 |:-:|:-:|:-:|:-:|
 |0.1874|0.3916|0.6701|0.8573|

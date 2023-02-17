@@ -8,7 +8,7 @@ Currently, we upload MSMARCO passage collection on [Google Drive](https://drive.
 2. Uncompress it wherever you like, for example, `/data/Adon/`.
 3. Go to `src/data/config/base/_default.yaml`, set `data_root: /data/Adon`. This tells the program where to find the data. If you want to perform experiments with other datasets, make sure they also be stored in `data_root`.
 
-*Adon* leverages [hydra](https://github.com/facebookresearch/hydra) to manage configurations of models and scripts in `src/data/config/`. You can learn more of it in {doc}`configs`. For example, `text_length` in `src/data/config/MSMARCO-passage` controls how many tokens to preserve for each passage.
+*Adon* leverages [hydra](https://github.com/facebookresearch/hydra) to manage configurations of models and scripts in `src/data/config/`. You can learn more of it in {doc}`configs`. For example, `text_length` in `src/data/config/base/MSMARCO-passage.yaml` controls how many tokens to preserve for each passage.
 
 ### Download Language Models
 *Adon* integrates [huggingface](https://huggingface.co/docs/transformers/v4.21.3/en/index) to load a variety of language models. By default, *Adon* will permanently download a specified language model and save it in a given folder and directly load it from the folder afterwards. You should specify the place you want to store by specifying `plm_root` in `data/config/base/_default.yaml`.

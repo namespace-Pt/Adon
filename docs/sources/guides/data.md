@@ -3,7 +3,7 @@ The very first thing to make use of this library is to download data (e.g. MSMAR
 
 ## Downloading
 ### Download Data
-Currently, we upload MSMARCO passage collection on [Google Drive](https://drive.google.com/file/d/185HvB-OWlTAtFyB9RePTL7LnWURcYDCG/view?usp=share_link). The corpus in the drive is slightly different from the offical one: it contains the **title** of each passage, which can always lead to better performance of sparse/dense models, see [RocketQA](https://arxiv.org/abs/2010.08191). To make use of the data:
+Currently, we upload MSMARCO passage collection on [OneDrive](https://1drv.ms/u/s!Aipk4vd2SBrtv3RttSFWXGsAb6bL?e=wdKhWf). The corpus in the drive is slightly different from the offical one: it contains the **title** of each passage, which can always lead to better performance of sparse/dense models, see [RocketQA](https://arxiv.org/abs/2010.08191). To make use of the data:
 1. Download the `.tar.gz` file from the drive.
 2. Uncompress it wherever you like, for example, `/data/Adon/`.
 3. Go to `src/data/config/base/_default.yaml`, set `data_root: /data/Adon`. This tells the program where to find the data. If you want to perform experiments with other datasets, make sure they also be stored in `data_root`.

@@ -2,7 +2,7 @@
 This tutorial explains how to reproduce our paper [Bi-Phase IVFPQ](https://arxiv.org/abs/2210.05521) on MSMARCO passage collection. 
 
 ## Reproducing From Checkpoint
-1. Make sure you finished the data processing steps in {doc}`data`. Then you should download the checkpoint and the necessary index files on [Google Drive](). The uncompressed files would look like:
+1. Make sure you finished the data processing steps in {doc}`data`. Then you should download the checkpoint and the necessary index files on [OneDrive](https://1drv.ms/u/s!Aipk4vd2SBrtv3PKTilTtlnAU-vQ?e=FERanU). The uncompressed files would look like:
    ```
    Bi-Phase-IVFPQ
    └── MSMARCO-passage

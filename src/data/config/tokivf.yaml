@@ -19,6 +19,10 @@ model:
   # how many token postings to scan
   text_gate_k: 3
 
+index:
+  # what percentile of the inverted lists are kept
+  posting_prune: 0.996
+
 train:
   hard_neg_num: 7
   enable_distill: bi

@@ -14,7 +14,6 @@ class COIL(BaseSparseModel):
         self.tokenProject = nn.Linear(self.textEncoder.config.hidden_size, config.token_dim)
 
         self._output_dim = config.token_dim
-        self._is_bow = False
 
 
     def _encode_text(self, **kwargs):

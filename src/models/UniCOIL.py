@@ -18,8 +18,6 @@ class UniCOIL(COIL):
         )
 
         self.special_token_ids = [x[1] for x in config.special_token_ids.values() if x[0] is not None]
-        # critical since COIL is not BOW
-        self._is_bow = True
 
 
     def _to_bow(self, token_ids, token_weights):
@@ -54,6 +52,8 @@ class UniCOIL(COIL):
         if "text_first_mask" in x:
             # mask the duplicated tokens' weight
             text_first_mask = self._move_to_device(x["text_first_mask"])
+            # mask duplicated tokens' id
+            text_token_id = text_token_id.masked_fill(~text_first_mask, 0)
             text_token_weight = text_token_weight.masked_fill(~text_first_mask, 0)
         # unsqueeze to map it to the _output_dim (1)
         return text_token_id.cpu().numpy(), text_token_weight.unsqueeze(-1).cpu().numpy()

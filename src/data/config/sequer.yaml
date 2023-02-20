@@ -23,13 +23,14 @@ model:
   restore: none
   # threshold for relaxed beam search
   beam_trsd: 100
-  trsd_start_len: 5
+  trsd_start_len: 3
 
   return_code: true
   code_type: UniCOIL-weight
   code_tokenizer: t5
   code_length: 34
   return_prefix_mask: true
+  
 
 train:
   batch_size: 10
@@ -39,6 +40,5 @@ train:
   main_metric: MRR@10
 
 eval:
-  eval_batch_size: 10
   # candidate_type: DPR_hn
   parallel: query

@@ -43,7 +43,7 @@ class SPLADEv2(BaseSparseModel):
 
 
     def _refresh_lambda(self):
-        if self._step <= self._lambda_warmup_step:
+        if self._step <= self._lambda_warmup_step and self._lambda_warmup_step > 0:
             self._text_lambda = self.config.text_lambda * (self._step / self._lambda_warmup_step) ** 2
             self._query_lambda = self.config.query_lambda * (self._step / self._lambda_warmup_step) ** 2
         else:

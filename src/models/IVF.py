@@ -9,7 +9,7 @@ from transformers import AutoModel
 from .BaseModel import BaseSparseModel
 from .UniCOIL import UniCOIL
 from utils.util import BaseOutput, synchronize
-from utils.index import FaissIndex, pq_quantize
+from utils.index import FaissIndex
 from utils.typings import *
 
 
@@ -31,7 +31,7 @@ class TopIVF(BaseSparseModel):
         self.ivfCentroids = nn.parameter.Parameter(torch.tensor(ivf_centroids))
 
         pq = index.pq
-        pq_centroids = faiss.vector_to_array(pq.centroids).reshape(pq.M, pq.ksub, pq.dsub)
+        pq_centroids = FaissIndex.get_pq_codebook(pq)
         if config.freeze_pq:
             self.register_buffer("pqCentroids", torch.tensor(pq_centroids))
         else:
@@ -144,7 +144,7 @@ class TopIVF(BaseSparseModel):
     def _quantize_pq(self, text_idx:TENSOR):
         # pq_id = self._pq_codes[text_idx].long()
         pq_id = torch.as_tensor(self._pq_codes[text_idx], device=self.config.device, dtype=torch.long)
-        quantized_embedding = pq_quantize(pq_id, self.pqCentroids)
+        quantized_embedding = FaissIndex.pq_quantize(pq_id, self.pqCentroids)
         return quantized_embedding
 
 

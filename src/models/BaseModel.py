@@ -961,8 +961,7 @@ class BaseSparseModel(BaseModel):
         text_embeddings_tensor = torch.as_tensor(text_embeddings.copy(), device=self.config.device)
 
         # invvec and invhit share the same inverted index
-        bow_state = "BOW" if self._output_dim == 1 else "ORG"
-        save_dir = os.path.join(self.config.cache_root, "index", self.name, "inv", bow_state, self.config.plm_tokenizer, "_".join([str(self._text_length), ",".join([str(x) for x in self.config.text_col])]), str(self.config.world_size))
+        save_dir = os.path.join(self.config.cache_root, "index", self.name, "inv", self.config.plm_tokenizer, "_".join([str(self._text_length), ",".join([str(x) for x in self.config.text_col])]), str(self.config.world_size))
 
         special_token_ids = set()
         if self._skip_special_tokens:
@@ -1802,7 +1801,7 @@ class BaseGenerativeModel(BaseModel):
         else:
             text_codes = None
 
-        index = TRIE_INDEX_MAP[self.config.index_type](
+        index = GENERATIVE_INDEX_MAP[self.config.index_type](
             save_dir=os.path.join(self.code_dir, "tries"),
             pad_token_id=self.config.special_token_ids["pad"][1]
         )
@@ -1823,7 +1822,7 @@ class BaseGenerativeModel(BaseModel):
         """
         Wrapper to construct a variety of trie indexes. Subclass may override this function to create customized index.
         """
-        if self.config.index_type in TRIE_INDEX_MAP:
+        if self.config.index_type in GENERATIVE_INDEX_MAP:
             return self.trie_index(loaders["text"])
 
 

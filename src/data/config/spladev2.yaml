@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: invvec
+  - index: impact-tok
   - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
@@ -14,6 +14,7 @@ base:
 
 model:
   model_type: spladev2
+  save_encode: true
 
   text_lambda: 1e-2
   query_lambda: 3e-2
@@ -24,11 +25,12 @@ index:
   return_first_mask: false
 
 train:
-  batch_size: 64
   learning_rate: 2e-5
   scheduler: linear
-
-  lambda_warmup_step: 50000
+  hard_neg_num: 7
+  lambda_warmup_step: 0
+  
+  eval_step: 5e
 
 eval:
   eval_posting_length: True

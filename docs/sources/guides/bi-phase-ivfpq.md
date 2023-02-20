@@ -2,22 +2,21 @@
 This tutorial explains how to reproduce our paper [Bi-Phase IVFPQ](https://arxiv.org/abs/2210.05521) on MSMARCO passage collection. 
 
 ## Reproducing From Checkpoint
-1. Make sure you finished the data processing steps in {doc}`data`. Then you should download the checkpoint and the necessary index files on [OneDrive](https://1drv.ms/u/s!Aipk4vd2SBrtv3PKTilTtlnAU-vQ?e=FERanU). The uncompressed files would look like:
+1. Make sure you finished the data processing steps in {doc}`data`. Then you should download the checkpoint and the necessary index files on [OneDrive](https://1drv.ms/u/s!Aipk4vd2SBrtwAkY33Vq2Y-HU6f1?e=Wq5VjI). The uncompressed files would look like:
    ```
-   Bi-Phase-IVFPQ
-   └── MSMARCO-passage
-     ├── ckpts
-     │   ├── DistillVQ_d-RetroMAE
-     │   │   └── best
-     │   ├── TokIVF
-     │   │   └── best
-     │   └── TopIVF
-     │       └── best
-     └── index
-         └── RetroMAE
-             └── faiss
-                 ├── IVF10000,PQ64x8
-                 └── OPQ96,PQ96x8
+   Bi-Phase-IVFPQ-MSMARCO
+   ├── ckpts
+   │   ├── DistillVQ_d-RetroMAE
+   │   │   └── best
+   │   ├── TokIVF
+   │   │   └── best
+   │   └── TopIVF
+   │       └── best
+   └── index
+      └── RetroMAE
+         └── faiss
+               ├── IVF10000,PQ64x8
+               └── OPQ96,PQ96x8
    ```
    Move the `ckpts/*` to `src/data/cache/MSMARCO-passage/ckpts/`. Move the `index/*` to `src/data/cache/MSMARCO-passage/index/`.
 
@@ -54,27 +53,27 @@ This tutorial explains how to reproduce our paper [Bi-Phase IVFPQ](https://arxiv
    # you should use more gpus than TopIVF because TokIVF involves a BERT and hence heavier
    torchrun --nproc_per_node=4 run.py TokIVF ++mode=eval ++save_encode
    ```
-   - If you encounter memory issues when building the inverted index, please run the above command with `++index_thread=5`. If it still won't work, run it with `++index_shard=64 ++index_thread=5`.
+   - If you encounter memory issues when building the inverted index, please run the above command with `++index_shard=64 ++index_thread=5` (increase shard number and decrease parallel process number). The default values are specified at `src/data/config/index/invhit.yaml`.
   
    This evaluates the performance of term-phase IVF followed by PQ verification when selecting `3` terms for each document. The metrics should be
    |MRR@10|Recall@10|Recall@100|Recall@1000|
    |:-:|:-:|:-:|:-:|
-   0.3937|0.67|0.8801|0.9255|
+   |0.395|0.6736|0.8859|0.9295|
 
 6. **Chain Them Together.**
    ```bash
-   python run.py BIVFPQ
+   torchrun --nproc_per_node=4 run.py BIVFPQ
    ```
    This evaluates Bi-phase IVFPQ under its default settings: **3 terms** and **1 topic** for each document to index, **all included terms** and **20 topics** for each query to search. The results should be:
    |MRR@10|Recall@10|Recall@100|Recall@1000|
    |:-:|:-:|:-:|:-:|
-   0.3984|0.6808|0.9121|0.9713|
+   0.3985|0.6824|0.914|0.9737|
 
    You can easily try different configurations:
    ```bash
    # index 5 terms for each document
-   python run.py BIVFPQ ++x_text_gate_k=5
+   torchrun --nproc_per_node=4 run.py BIVFPQ ++x_text_gate_k=5
    # search 10 topics for each query
-   python run.py BIVFPQ ++y_query_gate_k=10
+   torchrun --nproc_per_node=4 run.py BIVFPQ ++y_query_gate_k=10
    ```
    You can inspect `src/data/config/BIVFPQ.yaml` for more details.

@@ -9,7 +9,7 @@ from tqdm import tqdm
 from transformers import AutoModel
 from .BaseModel import BaseDenseModel
 from utils.util import BaseOutput, readlink
-from utils.index import pq_quantize, FaissIndex
+from utils.index import FaissIndex
 from utils.typings import *
 
 
@@ -40,9 +40,9 @@ class DistillVQ(BaseDenseModel):
             self.ivfCentroids = nn.parameter.Parameter(torch.tensor(ivf_centroids))
 
             pq = ivf_index.pq
-            pq_centroids = faiss.vector_to_array(pq.centroids).reshape(pq.M, pq.ksub, pq.dsub)
+            pq_centroids = FaissIndex.get_pq_codebook(pq)
             self.pqCentroids = nn.parameter.Parameter(torch.tensor(pq_centroids))
-
+            
             invlists = ivf_index.invlists
             cs = invlists.code_size
             pq_codes = np.zeros((ivf_index.ntotal, pq.M), dtype=np.float32)
@@ -169,7 +169,7 @@ class DistillVQ(BaseDenseModel):
 
         else:
             pq_id = torch.as_tensor(self._pq_codes[text_idx], device=self.config.device, dtype=torch.long)
-            quantized_embedding = pq_quantize(pq_id, self.pqCentroids)
+            quantized_embedding = FaissIndex.pq_quantize(pq_id, self.pqCentroids)
 
         return quantized_embedding
 

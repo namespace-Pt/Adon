@@ -6,7 +6,7 @@ Then you will learn how to **train** a basic dense retriever [DPR](https://arxiv
 
 
 ## Prepare Data
-The very first thing you should do is to download the MSMARCO passage data. You can directly download the files from [Google Drive](https://drive.google.com/file/d/185HvB-OWlTAtFyB9RePTL7LnWURcYDCG/view?usp=share_link). More details are {doc}`here <data>`. 
+The very first thing you should do is to download the MSMARCO passage data. You can directly download the files from [OneDrive](https://1drv.ms/u/s!Aipk4vd2SBrtv3RttSFWXGsAb6bL?e=kPeVe5). More details are {doc}`here <data>`. 
 
 The file is actually a `.tar.gz` file, and you should untar it wherever you like.  Remember to tell the program where to find your data:
 - If you save all the uncompressed files in `/home/user/Data`, you should set `data_root: /home/user/Data` in `src/data/config/base/_default.yaml`. 
@@ -40,7 +40,7 @@ You can now run the following to reproduce BM25 with the default `k1=0.82` and `
 ```bash
 python run.py BM25
 ```
-- To modify `k1`, `b`, go to `data/config/index/bm25.yaml`.
+- To modify `k1`, `b`, just specify `++k1=1 ++b=0.5` when running the command. The default value of `k1` and `b` stores at `data/config/index/bm25.yaml`.
 
 The indexing and evaluating should finish within 10 minutes. The metrics will be printed at console, and also logged at `performance.log`, which should be:
 |MRR@10|Recall@10|Recall@100|Recall@1000|

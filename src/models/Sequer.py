@@ -143,6 +143,7 @@ class Sequer(BaseGenerativeModel):
     @synchronize
     @torch.no_grad()
     def retrieve(self, loaders):
+        from utils.index import BeamManager
         # Use the <eos> token's score as the sequences_score
         trie = self.index(loaders).index
         loader_query = loaders["query"]
@@ -154,51 +155,38 @@ class Sequer(BaseGenerativeModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
+        beam_manager = BeamManager()
+
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
             query = self._move_to_device(x["query"])
             encoder_outputs = self.plm.encoder(**query)
-
-            beams = trie.beam_search(
-                model=self.plm,
-                nbeam=self.config.nbeam,
-                threshold=self.config.beam_trsd,
-                trsd_start_len=self.config.trsd_start_len,
-                min_length=0,
-                max_new_tokens=self.config.code_length - 1,
-                **query,
-                encoder_outputs=encoder_outputs.copy()
-            )
-
-            padded_code = [0] * self.config.code_length
             B = query["input_ids"].shape[0]
-            N = max([len(beam) for beam in beams])
-            for i, beam in enumerate(beams):
-                if len(beam) < N:
-                    beams[i].extend([padded_code] * (N - len(beam)))
-            codes = torch.tensor(beams, device=self.config.device) # B, N, code_length
 
-            # repeat query to match the text_codes
-            for k, v in query.items():
-                query[k] = v.repeat_interleave(N, 0)
-            for k, v in encoder_outputs.items():
-                encoder_outputs[k] = v.repeat_interleave(N, 0)
+            beam_manager.search(
+                model=self.plm, 
+                nbeam=self.config.nbeam, 
+                threshold=self.config.beam_trsd, 
+                trsd_start_len=self.config.trsd_start_len, 
+                min_length=0, 
+                max_new_tokens=self.config.code_length - 1, 
+                trie_index=trie, 
+                **query, 
+                encoder_outputs=encoder_outputs
+            )
+            beams = beam_manager.beams
+            eos_hidden_states = beam_manager.eos_hidden_states
+
+            all_eos_hidden_states = torch.cat(eos_hidden_states, dim=0)
+            scores = self.scorer(all_eos_hidden_states).squeeze(-1).tolist() # B * trsd
             
-            rerank_inputs = {"text_code": codes.flatten(0,1), "query": query, "encoder_outputs": encoder_outputs}
-            scores = self.rerank_step(rerank_inputs).view(B, N).cpu().numpy()
-
-            for j, batch_code in enumerate(codes.tolist()):
+            offset = 0
+            for j, batch_beam in enumerate(beams):
                 res = defaultdict(list)
-                for k, c in enumerate(batch_code):
-                    # when reach the padded code, just move to the next batch
-                    if c[1] == 0:
-                        break
-                    # sometimes the generated code may stop at early steps, just do padding otherwise the leaf cannot be found
-                    if len(c) < self.config.code_length:
-                        c = c + [0] * (self.config.code_length - len(c))
+                for k, c in enumerate(batch_beam):
                     ids = trie[c]
                     for id in ids:
-                        res[id].append(scores[j, k])
-                # may be duplicated doc ids (1 doc with 2 codes)
+                        res[id].append(scores[offset + k])
+                offset += len(batch_beam)
                 retrieval_result[j + start_idx + query_start_idx] = [(k, max(v)) for k, v in res.items()]
 
             end_idx = start_idx + B

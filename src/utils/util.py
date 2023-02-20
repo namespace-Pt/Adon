@@ -61,7 +61,7 @@ def load_from_previous(model:torch.nn.Module, path:str):
         else:
             new_state_dict[k] = v
 
-    missing_keys, unexpected_keys = model.load_state_dict(new_state_dict)
+    missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
     if len(missing_keys):
         print(f"Missing Keys: {missing_keys}")
     if len(unexpected_keys):
@@ -944,6 +944,10 @@ class Config(DotDict):
                 "tokenizer": "deberta",
                 "load_name": "microsoft/deberta-base"
             },
+            "keyt5": {
+                "tokenizer": "t5",
+                "load_name": "snrspeaks/KeyPhraseTransformer"
+            }
         }
 
         self.plm_dir = os.path.join(self.plm_root, plm)

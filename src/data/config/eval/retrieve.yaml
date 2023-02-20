@@ -14,8 +14,8 @@ eval_posting_length: False
 # the post verifier
 verifier_type: none
 # the source of verifier
-verifier_src: DistillVQ_d-RetroMAE
+verifier_src: none
 # the (pq) index used
-verifier_index: OPQ96,PQ96x8
+verifier_index: none
 # the final hits
 verifier_hits: 1000

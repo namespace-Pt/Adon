@@ -1787,31 +1787,32 @@ class BaseGenerativeModel(BaseModel):
         """
         Encode each text into its code.
         """
-        text_codes = loader_text.dataset.text_codes[loader_text.sampler.start: loader_text.sampler.end].copy()
+        text_codes = loader_text.dataset.text_codes[loader_text.sampler.start: loader_text.sampler.end]
         return BaseOutput(codes=text_codes)
 
 
-    def trie_index(self, loader_text:DataLoader):
+    def generative_index(self, loader_text:DataLoader):
         """
         Construct :class:`utils.index.TrieIndex`.
         """
-        if not self.config.load_index:
-            encode_output = self.encode_text(loader_text)    # N, L
-            text_codes = encode_output.codes
-        else:
-            text_codes = None
+        encode_output = self.encode_text(loader_text)    # N, L
+        text_codes = encode_output.codes
 
         index = GENERATIVE_INDEX_MAP[self.config.index_type](
-            save_dir=os.path.join(self.code_dir, "tries"),
-            pad_token_id=self.config.special_token_ids["pad"][1]
+            rank=self.config.rank,
+            save_dir=self.code_dir,
+            pad_token_id=self.config.special_token_ids["pad"][1],
+            text_num=len(loader_text.dataset),
+            token_num=self.config.vocab_size,
         )
 
         index.fit(
             text_codes=text_codes,
-            rebuild_index=self.config.code_type == "self",
             load_index=self.config.load_index,
             # only save at rank==0 because tries across processes are always the same
-            save_index=self.config.is_main_proc and self.config.save_index
+            save_index=self.config.save_index,
+            threads=self.config.get("index_thread"),
+            shards=self.config.get("index_shard")
         )
 
         return BaseOutput(index=index)
@@ -1823,7 +1824,7 @@ class BaseGenerativeModel(BaseModel):
         Wrapper to construct a variety of trie indexes. Subclass may override this function to create customized index.
         """
         if self.config.index_type in GENERATIVE_INDEX_MAP:
-            return self.trie_index(loaders["text"])
+            return self.generative_index(loaders["text"])
 
 
     @synchronize
@@ -1845,7 +1846,7 @@ class BaseGenerativeModel(BaseModel):
         loader_query = loaders["query"]
 
         def prefix_allowed_tokens_fn(batch_id, sent):
-            valid = trie.get_next_keys(sent.cpu().numpy())
+            valid = trie.get_valid_tokens(sent.cpu().numpy())
             return valid
 
         retrieval_result = {}

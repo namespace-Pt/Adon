@@ -69,7 +69,7 @@ html_static_path = ["sources/_static"]
 html_css_files = ['custom.css']
 
 # mock these packages exist
-autodoc_mock_imports = ["faiss", "torch", "torch_scatter", "transformers", "pandas", "omegaconf", "hydra"]
+autodoc_mock_imports = ["faiss", "torch", "torch_scatter", "transformers", "pandas", "omegaconf", "hydra", "psutil", "tqdm"]
 
 # do not change the order of classes or functions in the module
 autodoc_member_order = 'bysource'

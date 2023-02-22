@@ -29,7 +29,6 @@ train:
   scheduler: linear
   hard_neg_num: 7
   lambda_warmup_step: 0
-  
   eval_step: 5e
 
 eval:

@@ -2,6 +2,9 @@ defaults:
   - _default
   - _self_
 
-index_type: trie
+index_type: intersect
+index_thread: 10
+index_shard: 32
+
 load_index: true
 save_index: true

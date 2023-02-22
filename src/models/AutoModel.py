@@ -45,7 +45,6 @@ MODEL_MAP = {
 class AutoModel(BaseModel):
     @classmethod
     def from_pretrained(cls, ckpt_path, **kwargs):
-        # TODO: return default config for each model
         state_dict = torch.load(ckpt_path, map_location="cpu")
 
         config = state_dict["config"]

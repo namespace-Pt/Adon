@@ -2,7 +2,7 @@
 This tutorial explains how to reproduce our paper [Bi-Phase IVFPQ](https://arxiv.org/abs/2210.05521) on MSMARCO passage collection. 
 
 ## Reproducing From Checkpoint
-1. Make sure you finished the data processing steps in {doc}`data`. Then you should download the checkpoint and the necessary index files on [OneDrive](https://1drv.ms/u/s!Aipk4vd2SBrtwAkY33Vq2Y-HU6f1?e=Wq5VjI). The uncompressed files would look like:
+1. Make sure you finished the data processing steps in {doc}`data`. Then you should download the checkpoint and the necessary index files on [OneDrive](https://1drv.ms/u/s!Aipk4vd2SBrtwAuOh3NWVBlh-1AE?e=cX0nXJ). The uncompressed files would look like:
    ```
    Bi-Phase-IVFPQ-MSMARCO
    ├── ckpts
@@ -58,7 +58,7 @@ This tutorial explains how to reproduce our paper [Bi-Phase IVFPQ](https://arxiv
    This evaluates the performance of term-phase IVF followed by PQ verification when selecting `3` terms for each document. The metrics should be
    |MRR@10|Recall@10|Recall@100|Recall@1000|
    |:-:|:-:|:-:|:-:|
-   |0.395|0.6736|0.8859|0.9295|
+   |0.395|0.6741|0.8864|0.9315|
 
 6. **Chain Them Together.**
    ```bash
@@ -67,7 +67,7 @@ This tutorial explains how to reproduce our paper [Bi-Phase IVFPQ](https://arxiv
    This evaluates Bi-phase IVFPQ under its default settings: **3 terms** and **1 topic** for each document to index, **all included terms** and **20 topics** for each query to search. The results should be:
    |MRR@10|Recall@10|Recall@100|Recall@1000|
    |:-:|:-:|:-:|:-:|
-   0.3985|0.6824|0.914|0.9737|
+   |0.3986|0.6829|0.9144|0.9742|
 
    You can easily try different configurations:
    ```bash

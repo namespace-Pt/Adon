@@ -143,9 +143,9 @@ class Sequer(BaseGenerativeModel):
     @synchronize
     @torch.no_grad()
     def retrieve(self, loaders):
-        from utils.index import BeamManager
+        from utils.index import BeamManagerConstantLength
         # Use the <eos> token's score as the sequences_score
-        trie = self.index(loaders).index
+        index = self.index(loaders).index
         loader_query = loaders["query"]
 
         retrieval_result = {}
@@ -155,7 +155,7 @@ class Sequer(BaseGenerativeModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
-        beam_manager = BeamManager()
+        beam_manager = BeamManagerConstantLength()
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
             query = self._move_to_device(x["query"])
@@ -167,26 +167,37 @@ class Sequer(BaseGenerativeModel):
                 nbeam=self.config.nbeam, 
                 threshold=self.config.beam_trsd, 
                 trsd_start_len=self.config.trsd_start_len, 
-                min_length=0, 
                 max_new_tokens=self.config.code_length - 1, 
-                trie_index=trie, 
+                constrain_index=index, 
                 **query, 
                 encoder_outputs=encoder_outputs
             )
             beams = beam_manager.beams
             eos_hidden_states = beam_manager.eos_hidden_states
 
-            all_eos_hidden_states = torch.cat(eos_hidden_states, dim=0)
-            scores = self.scorer(all_eos_hidden_states).squeeze(-1).tolist() # B * trsd
+            # ranking by score
+            if self.config.rank_type == "eos":
+                if isinstance(eos_hidden_states, list):
+                    eos_hidden_states = torch.cat(eos_hidden_states, dim=0)
+                scores = self.scorer(eos_hidden_states).squeeze(-1).tolist() # B * trsd
+            elif self.config.rank_type == "prob":            
+                # ranking by generation prob
+                scores = sum(beam_manager.seq_scores, [])
+            else:
+                raise NotImplementedError(f"Ranking type {self.config.ranking_type} is not implemented yet!")
             
             offset = 0
-            for j, batch_beam in enumerate(beams):
+            for j, batch in enumerate(beams):
                 res = defaultdict(list)
-                for k, c in enumerate(batch_beam):
-                    ids = trie[c]
+                for k, c in enumerate(batch):
+                    if beam_manager.constrain_index_type == "trie":
+                        ids = index[c]
+                    elif beam_manager.constrain_index_type == "intersect":
+                        # need to provide prev_text_indices
+                        ids = index[c, beam_manager.prev_text_indices[j][k]]
                     for id in ids:
                         res[id].append(scores[offset + k])
-                offset += len(batch_beam)
+                offset += len(batch)
                 retrieval_result[j + start_idx + query_start_idx] = [(k, max(v)) for k, v in res.items()]
 
             end_idx = start_idx + B

@@ -15,12 +15,12 @@ base:
 model:
   model_type: sequer
   train_scheme: contra+gen
+  # how to rank when evaluating
+  rank_type: eos
   # beam size
   nbeam: 10
   # length penalty in generic beam scoring
   length_penalty: 0
-  # how to restore missing branches
-  restore: none
   # threshold for relaxed beam search
   beam_trsd: 100
   trsd_start_len: 3
@@ -30,7 +30,6 @@ model:
   code_tokenizer: t5
   code_length: 34
   return_prefix_mask: true
-  
 
 train:
   batch_size: 10

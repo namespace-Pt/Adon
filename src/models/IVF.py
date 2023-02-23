@@ -305,6 +305,7 @@ class TokIVF(UniCOIL):
     """
     def __init__(self, config):
         super().__init__(config)
+        self.queryEncoder = None
 
 
     def _encode_query(self, **kwargs):

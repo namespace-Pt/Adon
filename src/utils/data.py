@@ -27,23 +27,6 @@ class BaseDataset(Dataset):
         self.special_token_ids = [x[1] for x in config.special_token_ids.values() if x[0] is not None]
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
 
-    def prepare_for_model(self, token_id, max_length):
-        assert isinstance(token_id, list)
-        # if self.config.get("text_prefix"):
-        #     token_id = self.tokenizer.encode(self.config.text_prefix, add_special_tokens=False) + token_id
-        outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True, return_token_type_ids=False)
-        return outputs
-
-    def tokenize(self, inputs, max_length):
-        # if self.config.get("text_prefix"):
-        #     if isinstance(inputs, str):
-        #         inputs = self.config.text_prefix + inputs
-        #     elif isinstance(inputs, list):
-        #         for i, x in enumerate(inputs):
-        #             inputs[i] = self.config.text_prefix + x
-        return self.tokenizer(inputs, padding="max_length", max_length=max_length, truncation=True, return_token_type_ids=False)
-
-
 
 class TextDataset(BaseDataset):
     """
@@ -97,6 +80,22 @@ class TextDataset(BaseDataset):
     def __len__(self) -> int:
         return self.text_num
 
+    def _prepare_for_model(self, token_id, max_length):
+        assert isinstance(token_id, list)
+        if self.config.get("text_prefix"):
+            token_id = self.tokenizer.encode(self.config.text_prefix, add_special_tokens=False) + token_id
+        outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True, return_token_type_ids=False)
+        return outputs
+    
+    def _tokenize(self, inputs, max_length):
+        if self.config.get("text_prefix"):
+            if isinstance(inputs, str):
+                inputs = self.config.text_prefix + inputs
+            elif isinstance(inputs, list):
+                for i, x in enumerate(inputs):
+                    inputs[i] = self.config.text_prefix + x
+        return self.tokenizer(inputs, padding="max_length", max_length=max_length, truncation=True, return_token_type_ids=False)
+
     def __getitem__(self, index:Union[int,np.ndarray,list]) -> dict:
         """
         Returns:
@@ -106,7 +105,7 @@ class TextDataset(BaseDataset):
             if isinstance(index, int):
                 text_token_id = self.text_token_ids[index]
                 text_token_id = text_token_id[text_token_id != -1].tolist()
-                text = self.prepare_for_model(text_token_id, self.config.text_length)
+                text = self._prepare_for_model(text_token_id, self.config.text_length)
             
             elif isinstance(index, np.ndarray) or isinstance(index, list):
                 input_ids = []
@@ -115,7 +114,7 @@ class TextDataset(BaseDataset):
                 # in this case, we need to load a bunch of texts once
                 for text_token_id in text_token_ids:
                     text_token_id = text_token_id[text_token_id != -1].tolist()
-                    text_outputs = self.prepare_for_model(text_token_id, self.config.text_length)
+                    text_outputs = self._prepare_for_model(text_token_id, self.config.text_length)
                     input_ids.append(text_outputs.input_ids)
                     attention_mask.append(text_outputs.attention_mask)
                 text = {
@@ -128,11 +127,11 @@ class TextDataset(BaseDataset):
 
         elif self.config.data_format == "raw":
             if isinstance(index, int):
-                text = self.tokenize(self.texts[index], self.config.text_length)
+                text = self._tokenize(self.texts[index], self.config.text_length)
             
             elif isinstance(index, np.ndarray) or isinstance(index, list):
                 text = self.texts[index].tolist()
-                text = self.tokenize(text, self.config.text_length)
+                text = self._tokenize(text, self.config.text_length)
 
         return_dict = {
             "text_idx": index,
@@ -217,10 +216,24 @@ class QueryDataset(BaseDataset):
                 dtype=np.float32
             ).reshape(self.query_num, 768)
 
-
     def __len__(self):
         return self.query_num
 
+    def _prepare_for_model(self, token_id, max_length):
+        assert isinstance(token_id, list)
+        if self.config.get("query_prefix"):
+            token_id = self.tokenizer.encode(self.config.query_prefix, add_special_tokens=False) + token_id
+        outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True, return_token_type_ids=False)
+        return outputs
+
+    def _tokenize(self, inputs, max_length):
+        if self.config.get("text_prefix"):
+            if isinstance(inputs, str):
+                inputs = self.config.text_prefix + inputs
+            elif isinstance(inputs, list):
+                for i, x in enumerate(inputs):
+                    inputs[i] = self.config.text_prefix + x
+        return self.tokenizer(inputs, padding="max_length", max_length=max_length, truncation=True, return_token_type_ids=False)
 
     def __getitem__(self, index:int):
         """
@@ -230,10 +243,10 @@ class QueryDataset(BaseDataset):
         if self.config.data_format == "memmap":
             query_token_id = self.query_token_ids[index]
             query_token_id = query_token_id[query_token_id != -1].tolist()
-            query = self.prepare_for_model(query_token_id, self.config.query_length)
+            query = self._prepare_for_model(query_token_id, self.config.query_length)
 
         elif self.config.data_format == "raw":
-            query = self.tokenize(self.queries[index], self.config.query_length)
+            query = self._tokenize(self.queries[index], self.config.query_length)
 
         return_dict = {
             "query_idx": index,
@@ -386,7 +399,7 @@ class TrainDataset(BaseDataset):
 
         if self.config.get("return_pair"):
             raw_query = self.tokenizer.decode(query_outputs["query"]["input_ids"], skip_special_tokens=True)    # string
-            raw_text = self.tokenizer.batch_decode(text_outputs["text"]["input_ids"], skip_special_tokens=True) # a list of strings        
+            raw_text = self.tokenizer.batch_decode(text_outputs["text"]["input_ids"], skip_special_tokens=True) # a list of strings
 
             raw_query = [raw_query] * len(raw_text)
             max_length = min(self.tokenizer.model_max_length, self.config.text_length + self.config.query_length)
@@ -537,9 +550,9 @@ class RawTripleTrainDataset(IterableDataset):
                 fields = line.strip().split("\t")
                 query, pos_text, neg_text = fields[:3]
 
-                query = self.tokenize(query, self.config.query_length)
+                query = self._tokenize(query, self.config.query_length)
 
-                text = self.tokenize([pos_text, neg_text], self.config.text_length)
+                text = self._tokenize([pos_text, neg_text], self.config.text_length)
 
                 # default to int64 so that it can be directly converted to long tensor
                 return_dict = {
@@ -652,7 +665,7 @@ def prepare_data(config) -> LOADERS:
 
     if config.get("loader_rerank") != "none":
         # pass in a list with only one element
-        rerank_dataset = PairDataset(config, [text_dataset], query_dataset)
+        rerank_dataset = PairDataset(config, text_dataset, [query_dataset])
         sampler_rerank = Sequential_Sampler(len(rerank_dataset), num_replicas=config.world_size, rank=config.rank)
         loaders["rerank"] = DataLoader(rerank_dataset, batch_size=config.eval_batch_size, sampler=sampler_rerank, num_workers=config.num_worker, collate_fn=default_collate)
 

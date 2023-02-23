@@ -1856,13 +1856,13 @@ class BaseGenerativeModel(BaseModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
+        N = min(self.config.hits, self.config.nbeam)
         if self.config.save_encode:
-            query_codes = np.full((len(loader_query.sampler), self.config.hits, self.config.code_length), trie.pad_token_id, dtype=np.int32)
+            query_codes = np.full((len(loader_query.sampler), N, self.config.code_length), trie.pad_token_id, dtype=np.int32)
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
             query = self._move_to_device(x["query"])
             B = query["input_ids"].shape[0]
-            N = min(self.config.hits, self.config.nbeam)
             outputs = self._generate(
                 **query,
                 min_length=None,
@@ -1905,7 +1905,7 @@ class BaseGenerativeModel(BaseModel):
         if self.config.save_encode:
             self.save_to_mmp(
                 os.path.join(self.retrieve_dir, "query_codes.mmp"),
-                shape=(len(loader_query.dataset), self.config.hits, self.config.code_length),
+                shape=(len(loader_query.dataset), *query_codes.shape[1:]),
                 dtype=query_codes.dtype,
                 loader=loader_query,
                 obj=query_codes

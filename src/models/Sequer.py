@@ -155,6 +155,13 @@ class Sequer(BaseGenerativeModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
+        if self.config.save_encode:
+            if self.config.beam_trsd == 0:
+                N = min(self.config.hits, self.config.nbeam)
+            else:
+                N = self.config.beam_trsd
+            query_codes = np.full((len(loader_query.sampler), N, self.config.code_length), -1, dtype=np.int32)
+
         beam_manager = BeamManagerConstantLength()
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
@@ -185,7 +192,11 @@ class Sequer(BaseGenerativeModel):
                 scores = sum(beam_manager.seq_scores, [])
             else:
                 raise NotImplementedError(f"Ranking type {self.config.ranking_type} is not implemented yet!")
-            
+
+            if self.config.save_encode:
+                for batch_beam in beams:
+                    query_codes[start_idx: end_idx, :len(batch_beam)] = batch_beam
+
             offset = 0
             for j, batch in enumerate(beams):
                 res = defaultdict(list)
@@ -205,5 +216,15 @@ class Sequer(BaseGenerativeModel):
             if self.config.debug:
                 if i > 2:
                     break
+        
+        if self.config.save_encode:
+            self.save_to_mmp(
+                os.path.join(self.retrieve_dir, "query_codes.mmp"),
+                shape=(len(loader_query.dataset), *query_codes.shape[1:]),
+                dtype=query_codes.dtype,
+                loader=loader_query,
+                obj=query_codes
+            )
+
 
         return retrieval_result

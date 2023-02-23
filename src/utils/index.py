@@ -336,6 +336,8 @@ class BaseInvertedIndex(BaseIndex):
                     start_idx,
                     self.token_num,
                     self.special_token_ids,
+                    # donot impose uniqueness in each inverted list
+                    False
                 ))
 
             text_idx_inverted_lists = [[] for _ in range(self.token_num)]
@@ -1516,7 +1518,8 @@ class IntersectIndex(BaseIndex):
                         start_idx,
                         self.token_num,
                         # no special tokens are considered
-                        set()
+                        set(),
+                        True
                     ))
 
                 text_idx_inverted_lists = [[] for _ in range(self.token_num)]
@@ -1556,13 +1559,12 @@ class IntersectIndex(BaseIndex):
         return text_indices
     
     def get_valid_tokens(self, text_indices, prefix):
-        # TODO: filter valid tokens so that all of them appear in at least one unseen text
         if len(prefix == 1):
             return self.all_tokens
         valid_tokens = self.text_codes[text_indices].reshape(-1)
         # forbid previously generated tokens
-        non_overlap = ~(valid_tokens[:, 1] == prefix).sum(-1).astype(bool)
-        valid_tokens = valid_tokens[non_overlap]
+        # non_overlap = ~((valid_tokens[:, 1] == prefix).sum(-1).astype(bool))
+        # valid_tokens = valid_tokens[non_overlap]
         return valid_tokens
     
     def __getitem__(self, key):
@@ -1630,11 +1632,18 @@ class BeamManagerConstantLength():
             # store the text_indices corresponding to previously generated tokens
             self.prev_text_indices = [[] for _ in range(batch_size)]
         
-    def update_parameters_by_beam(self, input_ids, beam_next_tokens, model_kwargs, past_key_values, batch_beam_idx):
+        # to bias the beam_indices to the batch_beam_indices
+        self.beam_idx_bias = torch.arange(self.batch_size, device=self.device).unsqueeze(-1)
+        
+    def update_parameters_by_beam(self, input_ids, beam_next_tokens, model_kwargs, past_key_values, beam_indices):
         """
-        Update input_ids by concatenation; Update cur_len plusing one; Update past and encoder_outputs in model_kwargs according to the new num_beams. Select past_key_values based on batch_beam_idx.
+        Update input_ids by concatenation; Update cur_len plusing one; Update past and encoder_outputs in model_kwargs according to the new num_beams. Select past_key_values based on batch_beam_indices.
         """
-        input_ids = torch.cat([input_ids[batch_beam_idx, :], beam_next_tokens.unsqueeze(-1)], dim=-1) # B*K, L
+        # bias the beam index to the batch_beam_index
+        # use prev_num_beams because the offset is reletive to the input_ids
+        batch_beam_indices = (beam_indices + self.beam_idx_bias[:self.batch_size] * self.prev_num_beams).view(-1)
+        
+        input_ids = torch.cat([input_ids[batch_beam_indices, :], beam_next_tokens.unsqueeze(-1)], dim=-1) # B*K, L
         # one more token
         self.cur_len += 1
         
@@ -1652,12 +1661,19 @@ class BeamManagerConstantLength():
             for layer_past_state in layer_past_states:
                 # need to set correct `past` for each of the four key / value states
                 reordered_layer_past_states = reordered_layer_past_states + (
-                    layer_past_state.index_select(0, batch_beam_idx),
+                    layer_past_state.index_select(0, batch_beam_indices),
                 )
             reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
         model_kwargs["past"] = reordered_decoder_past
 
-        # TODO: other attributes
+        # update prev_text_indices to match the used beams
+        if self.constrain_index_type == "intersect" and self.cur_new_tokens > 1:
+            for i, beam_idx in enumerate(beam_indices):
+                batch_idx = self.batch_indices[i]
+                prev_text_indices = self.prev_text_indices[batch_idx]
+                # reorder to match the selected beams
+                self.prev_text_indices[batch_idx] = [prev_text_indices[j] for j in beam_idx]
+
         return input_ids, model_kwargs
                 
     def update_parameters_by_batch(self, input_ids, model_kwargs):
@@ -1685,7 +1701,7 @@ class BeamManagerConstantLength():
             self.batch_filter = self.batch_filter[self.batch_filter]
         return input_ids, model_kwargs
     
-    def update_beams(self, input_ids, model, model_kwargs, threshold, trsd_start_len, max_new_tokens, constrain_index, eos_token_id):
+    def update_beams(self, input_ids, model, model_kwargs, threshold, trsd_start_len, max_new_tokens, constrain_index):
         """
         Update beams, seq_scores and eos_hidden_states. When threshold is 0, continue strict beam search. When threshold is bigger than 0, the batch whose beams are less than threshold are handled.
         """
@@ -1693,8 +1709,10 @@ class BeamManagerConstantLength():
             if self.cur_new_tokens == max_new_tokens:
                 self.beams = input_ids.unflatten(0, (self.batch_size,  -1)).tolist()
                 self.seq_scores = self.beam_scores.view(self.batch_size, self.num_beams).tolist()
-                incoming_input_ids = input_ids[:, [-1]]
-                assert (incoming_input_ids == eos_token_id).all()
+                # last_input_id will be eos_token_id in most cases, however, if num_beams is bigger than the number of valid tokens in some decoding steps, 
+                # there will be meaningless tokens generated, and the last_token_id will be arbitrary
+                # but the outputs will not be affected
+                last_input_id = input_ids[:, [-1]]
 
                 # rewrite past with past_key_values
                 new_model_kwargs = {}
@@ -1703,7 +1721,7 @@ class BeamManagerConstantLength():
                         new_model_kwargs["past_key_values"] = v
                     else:
                         new_model_kwargs[k] = v
-                outputs = model(decoder_input_ids=incoming_input_ids, **new_model_kwargs)
+                outputs = model(decoder_input_ids=last_input_id, **new_model_kwargs)
                 if "decoder_hidden_states" in outputs:
                     self.eos_hidden_states = outputs.decoder_hidden_states[-1][:, -1]
 
@@ -1718,14 +1736,13 @@ class BeamManagerConstantLength():
                     batch_idx = self.batch_indices[i]
                     text_indices = constrain_index.find_text(last_generated_tokens_batch)   # num_beams, num_text
                     # if is_empty, we put all text_indices into the batch
-                    prev_text_indices = self.prev_text_indices[batch_idx]
-                    is_empty = len(prev_text_indices) == 0
                     for j, text_idx in enumerate(text_indices):
-                        if is_empty:
+                        # the first decoding step
+                        if self.cur_new_tokens == 1:
                             # in case this is the first generation step, where all texts are available
                             self.prev_text_indices[batch_idx].append(text_idx)
                         else:
-                            self.prev_text_indices[batch_idx][j] = np.intersect1d(prev_text_indices[j], text_idx)
+                            self.prev_text_indices[batch_idx][j] = np.intersect1d(self.prev_text_indices[batch_idx][j], text_idx)
 
         elif self.cur_new_tokens >= trsd_start_len:
             if self.constrain_index_type == "trie":
@@ -1803,9 +1820,6 @@ class BeamManagerConstantLength():
 
         self.prepare(nbeam, input_ids, constrain_index)
 
-        # to bias the beam_indices to the batch_beam_indices
-        beam_idx_bias = torch.arange(self.batch_size, device=self.device).unsqueeze(-1)
-
         # expand model_kwargs and input_ids to the max size, which is batch_size * num_beams
         input_ids, model_kwargs = model._expand_inputs_for_generation(
             input_ids, expand_size=self.num_beams, is_encoder_decoder=model.config.is_encoder_decoder, **model_kwargs
@@ -1858,15 +1872,12 @@ class BeamManagerConstantLength():
             # 6. update beam_scores and input_ids according to the next token
             self.beam_scores = next_token_scores.view(-1)
             beam_next_tokens = next_tokens.view(-1)
-            # bias the beam index to the batch_beam_index
-            # use prev_num_beams because the offset is reletive to the input_ids
-            batch_beam_idx = (next_beam_indices + beam_idx_bias[:self.batch_size] * self.prev_num_beams).view(-1)
 
             # 7. update model kwargs corresponding to the selected beams
-            input_ids, model_kwargs = self.update_parameters_by_beam(input_ids, beam_next_tokens, model_kwargs, outputs.past_key_values, batch_beam_idx)
+            input_ids, model_kwargs = self.update_parameters_by_beam(input_ids, beam_next_tokens, model_kwargs, outputs.past_key_values, next_beam_indices)
 
             # 8. handle the finished batches according to the threshold
-            self.update_beams(input_ids, model, model_kwargs, threshold, trsd_start_len, max_new_tokens, constrain_index, eos_token_id)
+            self.update_beams(input_ids, model, model_kwargs, threshold, trsd_start_len, max_new_tokens, constrain_index)
 
             # 9. update model kwargs in case some batches finish
             input_ids, model_kwargs = self.update_parameters_by_batch(input_ids, model_kwargs)
@@ -2067,18 +2078,24 @@ def build_inverted_lists(args):
     """
     Build inverted lists for :class:`utils.index.BaseInvertedIndex`.
     """
-    token_ids, start_text_idx, token_num, stop_token_ids = args
+    token_ids, start_text_idx, token_num, stop_token_ids, to_unique = args
 
     text_idx_inverted_lists = [[] for _ in range(token_num)]
     token_idx_inverted_lists = [[] for _ in range(token_num)]
 
     for text_idx, token_ids in enumerate(tqdm(token_ids, ncols=100, leave=False)):
+        if to_unique:
+            token_set = set()
         for token_idx, token_id in enumerate(token_ids):
             if token_id == -1 or token_id in stop_token_ids:
+                continue
+            if to_unique and token_id in token_set:
                 continue
             # save the token's position (text_idx, token_idx) in the inverted list
             text_idx_inverted_lists[token_id].append(start_text_idx + text_idx)
             token_idx_inverted_lists[token_id].append(token_idx)
+            if to_unique:
+                token_set.add(token_id)
 
     return text_idx_inverted_lists, token_idx_inverted_lists
 

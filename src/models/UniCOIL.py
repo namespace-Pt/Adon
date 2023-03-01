@@ -43,20 +43,20 @@ class UniCOIL(COIL):
     def encode_text_step(self, x):
         text = self._move_to_device(x["text"])
         text_token_id = text["input_ids"]
-
-        text_token_embedding = self._encode_text(**text)
-        text_bow = self._to_bow(text_token_id, text_token_embedding)
-
-        text_token_weight = text_bow.gather(index=text_token_id, dim=-1)
+        text_token_weight = self._encode_text(**text)
 
         if "text_first_mask" in x:
+            text_bow = self._to_bow(text_token_id, text_token_weight)
+            text_token_weight = text_bow.gather(index=text_token_id, dim=-1)
+
             # mask the duplicated tokens' weight
             text_first_mask = self._move_to_device(x["text_first_mask"])
             # mask duplicated tokens' id
             text_token_id = text_token_id.masked_fill(~text_first_mask, 0)
-            text_token_weight = text_token_weight.masked_fill(~text_first_mask, 0)
+            text_token_weight = text_token_weight.masked_fill(~text_first_mask, 0).unsqueeze(-1)
+
         # unsqueeze to map it to the _output_dim (1)
-        return text_token_id.cpu().numpy(), text_token_weight.unsqueeze(-1).cpu().numpy()
+        return text_token_id.cpu().numpy(), text_token_weight.cpu().numpy()
 
 
     def encode_query_step(self, x):

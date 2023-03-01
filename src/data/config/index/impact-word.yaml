@@ -5,7 +5,7 @@ defaults:
 index_type: impact-word
 
 load_collection: False
-quantize_bit: 16
+quantize_bit: 8
 language: eng
 
 reduce: max

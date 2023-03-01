@@ -22,8 +22,8 @@ class DSI(BaseGenerativeModel):
     def forward(self, x):
         x = self._move_to_device(x)
         query = x["query"]
-        # strip off the leading 0
-        text_code = x["text_code"]
+        # squeeze the auxillary dimension
+        text_code = x["text_code"].squeeze(1)
         # the code has a leading 0, shift left one position so t5 can shift it back
         labels = torch.zeros_like(text_code)
         labels[:, :-1] = text_code[:, 1:]

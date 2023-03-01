@@ -45,7 +45,11 @@ def init_query_and_qrel(query_path:str, qrel_path:str, cache_dir:str, tid2index:
 
     valid_queries = set()
     for line in open(qrel_path, 'r', encoding='utf-8'):
-        query_id, _, positive_text_id, _ = line.strip().split()
+        try:
+            query_id, _, positive_text_id, _ = line.strip().split()
+        except:
+            print(line)
+            raise
         if query_id in valid_queries:
             pass
         else:
@@ -113,9 +117,13 @@ def tokenize_to_memmap(input_path:str, cache_dir:str, num_rec:int, max_length:in
 
     arguments = []
 
+    memmap_path = os.path.join(cache_dir_with_plm, "token_ids.mmp")
+    if os.path.exists(memmap_path):
+        os.remove(memmap_path)
+
     # create memmap first
     token_ids = np.memmap(
-        os.path.join(cache_dir_with_plm, "token_ids.mmp"),
+        memmap_path,
         shape=(num_rec, max_length),
         mode="w+",
         dtype=np.int32

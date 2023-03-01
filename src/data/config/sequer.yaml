@@ -19,8 +19,6 @@ model:
   rank_type: eos
   # beam size
   nbeam: 10
-  # length penalty in generic beam scoring
-  length_penalty: 0
   # threshold for relaxed beam search
   beam_trsd: 100
   trsd_start_len: 3

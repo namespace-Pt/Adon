@@ -28,6 +28,7 @@ index:
 train:
   # only query-pos pair
   hard_neg_type: none
+  epoch: 50
 
   learning_rate: 1e-3
   scheduler: linear

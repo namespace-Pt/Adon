@@ -9,6 +9,7 @@ from transformers import T5ForConditionalGeneration
 from transformers.modeling_outputs import BaseModelOutput
 from .BaseModel import BaseGenerativeModel
 from utils.util import synchronize
+from utils.index import BeamManager
 
 
 
@@ -143,7 +144,6 @@ class Sequer(BaseGenerativeModel):
     @synchronize
     @torch.no_grad()
     def retrieve(self, loaders):
-        from utils.index import BeamManagerConstantLength
         # Use the <eos> token's score as the sequences_score
         index = self.index(loaders).index
         loader_query = loaders["query"]
@@ -162,12 +162,13 @@ class Sequer(BaseGenerativeModel):
                 N = self.config.beam_trsd
             query_codes = np.full((len(loader_query.sampler), N, self.config.code_length), -1, dtype=np.int32)
 
-        beam_manager = BeamManagerConstantLength()
+        beam_manager = BeamManager()
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
             query = self._move_to_device(x["query"])
             encoder_outputs = self.plm.encoder(**query)
             B = query["input_ids"].shape[0]
+            end_idx = start_idx + B
 
             beam_manager.search(
                 model=self.plm, 
@@ -175,7 +176,8 @@ class Sequer(BaseGenerativeModel):
                 threshold=self.config.beam_trsd, 
                 trsd_start_len=self.config.trsd_start_len, 
                 max_new_tokens=self.config.code_length - 1, 
-                constrain_index=index, 
+                constrain_index=index,
+                rank_type=self.config.rank_type,
                 **query, 
                 encoder_outputs=encoder_outputs
             )
@@ -184,8 +186,10 @@ class Sequer(BaseGenerativeModel):
 
             # ranking by score
             if self.config.rank_type == "eos":
-                if isinstance(eos_hidden_states, list):
+                if isinstance(eos_hidden_states[0], torch.Tensor):
                     eos_hidden_states = torch.cat(eos_hidden_states, dim=0)
+                elif isinstance(eos_hidden_states[0], list):
+                    eos_hidden_states = torch.stack(sum(eos_hidden_states, []), dim=0)
                 scores = self.scorer(eos_hidden_states).squeeze(-1).tolist() # B * trsd
             elif self.config.rank_type == "prob":            
                 # ranking by generation prob
@@ -211,7 +215,6 @@ class Sequer(BaseGenerativeModel):
                 offset += len(batch)
                 retrieval_result[j + start_idx + query_start_idx] = [(k, max(v)) for k, v in res.items()]
 
-            end_idx = start_idx + B
             start_idx = end_idx
             if self.config.debug:
                 if i > 2:

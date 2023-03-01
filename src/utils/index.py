@@ -1255,7 +1255,7 @@ class TrieIndex(BaseIndex):
     def __getitem__(self, key):
         node = self._find(key)
         if node is None or node.value is NULL:
-            raise KeyError
+            raise KeyError(f"Invalid key {key}")
         return node.value
 
     def __setitem__(self, key, value):
@@ -1386,7 +1386,6 @@ class TrieIndex(BaseIndex):
             ids: auxillary ids for each document
             verbose: print information
         """
-        assert isinstance(sequences, np.ndarray)
         if verbose:
             self.logger.info("adding nodes to trie...")
 
@@ -1401,9 +1400,7 @@ class TrieIndex(BaseIndex):
             else:
                 id = i
 
-            sequence = sequence.copy()
-            # replace -1 with pad token
-            sequence[sequence == -1] = self.pad_token_id
+            sequence = sequence[sequence != -1].copy()
             self[sequence] = id
 
     def save(self, save_path:Optional[str]=None):
@@ -1444,12 +1441,14 @@ class TrieIndex(BaseIndex):
         """
         if load_index and os.path.exists(self.save_path):
             self.load()
-            return
-        elif not os.path.exists(self.save_path):
-            self.add(text_codes, verbose=verbose)
-            if self.rank == 0 and save_index:
+
+        else:
+            if self.rank == 0:
+                self.add(text_codes, verbose=verbose)            
                 os.makedirs(self.save_dir, exist_ok=True)
                 self.save()
+            synchronize()
+            self.load()
 
     def inspect_structure(self, verbose=True) -> np.ndarray:
         """
@@ -1574,15 +1573,14 @@ class IntersectIndex(BaseIndex):
         return res
 
 
-class BeamManagerConstantLength():
+class BeamManager():
     """
-    Minxin for beam search with constant generation length. Based on code from transformers.
-    TODO: variant decoded token length
+    Minxin for beam search with threshold and eos_hidden_states cache. Based on code from transformers.
     """
     @property
     def batch_size(self):
         return len(self.batch_filter)
-    
+
     @property
     def cur_new_tokens(self):
         return self.cur_len - self.input_len
@@ -1590,8 +1588,11 @@ class BeamManagerConstantLength():
     @property
     def num_left_batch(self):
         return self.batch_filter.sum()
-    
-    def set_num_beams(self):
+
+    def global_batch_idx(self, local_idx):
+        return self.batch_indices[local_idx]
+        
+    def _set_num_beams(self):
         if isinstance(self.nbeam, list):
             num_beams = self.nbeam[min(self.cur_new_tokens, len(self.nbeam) - 1)]
             prev_num_beams = self.nbeam[max(min(self.cur_new_tokens - 1, len(self.nbeam) - 1), 0)]
@@ -1599,33 +1600,98 @@ class BeamManagerConstantLength():
             num_beams = self.nbeam
             prev_num_beams = self.nbeam
         self.num_beams = num_beams
-        self.prev_num_beams = prev_num_beams    
-    
+        self.prev_num_beams = prev_num_beams
 
-    def prepare(self, nbeam, input_ids, constrain_index):
+    def _slice_inputs_by_beams(self, inputs):
+        if isinstance(inputs, torch.Tensor):
+            x = inputs.unflatten(0, (self.batch_size, -1))
+            if x.shape[1] > self.num_beams:
+                inputs = x[:, :self.num_beams].flatten(0, 1)
+            elif x.shape[1] < self.num_beams:
+                raise ValueError(f"Found inputs shape {x.shape}, but num_beams {self.num_beams}!")
+        return inputs
+    
+    def _slice_model_kwargs(self, model_kwargs, batch_idx, repeat_times):
+        new_model_kwargs = {}
+        for k, v in model_kwargs.items():
+            if k == "past":
+                reordered_decoder_past = ()
+                for layer_past_states in v:
+                    reordered_layer_past_states = ()
+                    for layer_past_state in layer_past_states:
+                        # need to set correct `past` for each of the four key / value states
+                        reordered_layer_past_states = reordered_layer_past_states + (
+                            layer_past_state.unflatten(0, (self.batch_size, self.num_beams))[batch_idx].repeat_interleave(repeat_times, dim=0),
+                        )
+                    reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
+                new_model_kwargs["past_key_values"] = reordered_decoder_past
+            elif k == "encoder_outputs":
+                new_model_kwargs[k] = type(v)({"last_hidden_state": v.last_hidden_state.unflatten(0, (self.batch_size, self.num_beams))[batch_idx].repeat_interleave(repeat_times, dim=0)})
+            elif isinstance(v, torch.Tensor):
+                new_model_kwargs[k] = v.unflatten(0, (self.batch_size, self.num_beams))[batch_idx].repeat_interleave(repeat_times, dim=0)
+            else:
+                new_model_kwargs[k] = v
+        return new_model_kwargs
+
+    def _add_beam(self, batch_idx:int, hypothesis: list, score: float, eos_hidden_state=Optional[torch.Tensor]):
+        """
+        Update self.beams
+        """        
+        # automatically add eos token id
+        if hypothesis[-1] != self.eos_token_id:
+            hypothesis.append(self.eos_token_id)
+        
+        beams = self.beams[batch_idx]
+        if len(beams) == 0:
+            # the first hypothesis in this batch
+            beams.append((hypothesis, score, eos_hidden_state))
+        else:
+            for i, x in enumerate(beams):
+                # when the current hypothesis's score is bigger than the stored one, insert it
+                if score > x[1]:
+                    beams.insert(i, (hypothesis, score, eos_hidden_state))
+                    # very important, find the right place and exit
+                    # otherwise causes infinite loop
+                    break
+            else:
+                # when the current hypothesis's score is the smallest, just append it at the tail
+                beams.append((hypothesis, score, eos_hidden_state))
+    
+    def _finalize(self):
+        """
+        Break the self.beams into beams, scores and eos_hidden_states;
+        There are at least num_beams valid hypotheses, and some non-sence sequences, we can tell if the score is -inf.
+        """
+        has_eos_hidden_state = self.beams[0][0][2] != None
+        for i, batch_beams in enumerate(self.beams):
+            self.seq_scores[i] = [x[1] for x in batch_beams]
+            if has_eos_hidden_state:
+                self.eos_hidden_states[i] = [x[2] for x in batch_beams]
+            self.beams[i] = [x[0] for x in batch_beams]
+
+    def prepare(self, nbeam, input_ids, eos_token_id, pad_token_id, constrain_index, rank_type):
         # set necessary attributes that will be involked extensively
         self.nbeam = nbeam
         self.input_len = input_ids.shape[1]
         self.cur_len = input_ids.shape[1]
         self.device = input_ids.device
+        self.eos_token_id = eos_token_id
+        self.pad_token_id = pad_token_id
+        self.rank_type = rank_type
         
         batch_size = input_ids.shape[0]
-        # use list to store finished beams because different batch may have different number of beams
+        # a beam list for each batch, whose element is (decoded_seq, score) pair
         self.beams = [[] for _ in range(batch_size)]
         # the last hidden state from the decoder
-        self.eos_hidden_states = [[] for _ in range(batch_size)]        
+        self.eos_hidden_states = [None for _ in range(batch_size)]        
         # generation probability cummulation
-        self.seq_scores = [[] for _ in range(batch_size)]
+        self.seq_scores = [0 for _ in range(batch_size)]
 
         # to determine which batch finished
         self.batch_filter = torch.ones(batch_size, dtype=torch.bool, device=self.device)
         self.batch_indices = torch.arange(batch_size, device=self.device)
 
-        self.set_num_beams()
-        beam_scores = torch.zeros((self.batch_size, self.num_beams), device=self.device)
-        # make sure only the first beam will be selected during the first beam search iteration, thereby avoiding repetitive input_ids across beams
-        beam_scores[:, 1:] = -1e9
-        self.beam_scores = beam_scores.view(-1)
+        self._set_num_beams()
 
         self.constrain_index_type = type(constrain_index).__name__[:-5].lower()
         if self.constrain_index_type == "intersect":
@@ -1634,16 +1700,15 @@ class BeamManagerConstantLength():
         
         # to bias the beam_indices to the batch_beam_indices
         self.beam_idx_bias = torch.arange(self.batch_size, device=self.device).unsqueeze(-1)
-        
-    def update_parameters_by_beam(self, input_ids, beam_next_tokens, model_kwargs, past_key_values, beam_indices):
+
+    def update_parameters_by_beam(self, input_ids, next_beam_tokens, next_beam_indices, model_kwargs, past_key_values):
         """
         Update input_ids by concatenation; Update cur_len plusing one; Update past and encoder_outputs in model_kwargs according to the new num_beams. Select past_key_values based on batch_beam_indices.
         """
         # bias the beam index to the batch_beam_index
         # use prev_num_beams because the offset is reletive to the input_ids
-        batch_beam_indices = (beam_indices + self.beam_idx_bias[:self.batch_size] * self.prev_num_beams).view(-1)
-        
-        input_ids = torch.cat([input_ids[batch_beam_indices, :], beam_next_tokens.unsqueeze(-1)], dim=-1) # B*K, L
+        batch_beam_indices = (next_beam_indices.view(self.batch_size, -1) + self.beam_idx_bias[:self.batch_size] * self.prev_num_beams).view(-1)
+        input_ids = torch.cat([input_ids[batch_beam_indices, :], next_beam_tokens.unsqueeze(-1)], dim=-1) # B*K, L
         # one more token
         self.cur_len += 1
         
@@ -1651,9 +1716,9 @@ class BeamManagerConstantLength():
         # encoder related model_kwargs are invariant to beams, so we just do expansion or slice
         for k, v in model_kwargs.items():
             if k == "encoder_outputs":
-                model_kwargs[k]["last_hidden_state"] = self._slice_or_expand_inputs_by_beams(v["last_hidden_state"])
+                model_kwargs[k]["last_hidden_state"] = self._slice_inputs_by_beams(v["last_hidden_state"])
             elif isinstance(v, torch.Tensor):
-                model_kwargs[k] = self._slice_or_expand_inputs_by_beams(v)
+                model_kwargs[k] = self._slice_inputs_by_beams(v)
 
         reordered_decoder_past = ()
         for layer_past_states in past_key_values:
@@ -1668,7 +1733,7 @@ class BeamManagerConstantLength():
 
         # update prev_text_indices to match the used beams
         if self.constrain_index_type == "intersect" and self.cur_new_tokens > 1:
-            for i, beam_idx in enumerate(beam_indices):
+            for i, beam_idx in enumerate(next_beam_indices):
                 batch_idx = self.batch_indices[i]
                 prev_text_indices = self.prev_text_indices[batch_idx]
                 # reorder to match the selected beams
@@ -1676,12 +1741,12 @@ class BeamManagerConstantLength():
 
         return input_ids, model_kwargs
                 
-    def update_parameters_by_batch(self, input_ids, model_kwargs):
+    def update_parameters_by_batch(self, input_ids, beam_scores, model_kwargs):
         # discard model_kwargs corresponding to the finished batches
         if self.num_left_batch < self.batch_size:
             # update model_kwargs
             input_ids = input_ids.unflatten(0, (self.batch_size, self.num_beams))[self.batch_filter].flatten(0,1)
-            self.beam_scores = self.beam_scores.unflatten(0, (self.batch_size, self.num_beams))[self.batch_filter].flatten(0,1)
+            beam_scores = beam_scores.unflatten(0, (self.batch_size, self.num_beams))[self.batch_filter].flatten(0,1)
             for k, v in model_kwargs.items():
                 if k == "past":
                     filtered_past = ()
@@ -1699,52 +1764,117 @@ class BeamManagerConstantLength():
             # update batch filter
             self.batch_indices = self.batch_indices[self.batch_filter]
             self.batch_filter = self.batch_filter[self.batch_filter]
-        return input_ids, model_kwargs
+        return input_ids, beam_scores, model_kwargs
     
-    def update_beams(self, input_ids, model, model_kwargs, threshold, trsd_start_len, max_new_tokens, constrain_index):
+    def update_beams(self, beam_tokens, beam_scores, beam_indices, input_ids, model, model_kwargs, past_key_values, max_new_tokens):
         """
-        Update beams, seq_scores and eos_hidden_states. When threshold is 0, continue strict beam search. When threshold is bigger than 0, the batch whose beams are less than threshold are handled.
+        1. update beams if eos is decoded
+        2. update beams if threshold is reached
+        3. update input_ids by concatenation
+        4. update model_kwargs by next_beam_indices
+
+        Args:
+            next_beam_tokens: (batch_size, num_beams * 2)
+            next_beam_scores: (batch_size, num_beams * 2)
+            next_beam_indices: (batch_size, num_beams * 2)
         """
-        if threshold == 0:
-            if self.cur_new_tokens == max_new_tokens:
-                self.beams = input_ids.unflatten(0, (self.batch_size,  -1)).tolist()
-                self.seq_scores = self.beam_scores.view(self.batch_size, self.num_beams).tolist()
-                # last_input_id will be eos_token_id in most cases, however, if num_beams is bigger than the number of valid tokens in some decoding steps, 
-                # there will be meaningless tokens generated, and the last_token_id will be arbitrary
-                # but the outputs will not be affected
-                last_input_id = input_ids[:, [-1]]
+        # when threshold is 0, perform original beam search
+        next_beam_tokens = torch.zeros((self.batch_size, self.num_beams), dtype=beam_tokens.dtype, device=self.device)
+        next_beam_scores = torch.zeros((self.batch_size, self.num_beams), device=self.device)
+        next_beam_indices = torch.zeros((self.batch_size, self.num_beams), dtype=beam_indices.dtype, device=self.device)
 
-                # rewrite past with past_key_values
-                new_model_kwargs = {}
-                for k, v in model_kwargs.items():
-                    if k == "past":
-                        new_model_kwargs["past_key_values"] = v
-                    else:
-                        new_model_kwargs[k] = v
-                outputs = model(decoder_input_ids=last_input_id, **new_model_kwargs)
-                if "decoder_hidden_states" in outputs:
-                    self.eos_hidden_states = outputs.decoder_hidden_states[-1][:, -1]
+        for batch_idx, (batch_beam_tokens, batch_beam_scores, batch_beam_indices) in enumerate(zip(beam_tokens, beam_scores, beam_indices)):
+            beam_idx = 0
+            for beam_rank, (beam_token, beam_score, beam_index) in enumerate(zip(batch_beam_tokens, batch_beam_scores, batch_beam_indices)):
+                if torch.isinf(beam_score) and beam_rank < self.num_beams:
+                    # when there is -inf within the top num_beams, the batch should be done
+                    self.batch_filter[batch_idx] = False
+                    break
 
-            # update prev_text_indices when generation is not finished
-            # because the last token id should always be eos_token_id
-            # which is included in all texts
-            elif self.constrain_index_type == "intersect":
-                # only need to update prev_text_indices
-                last_generated_tokens = input_ids[:, -1].view(self.batch_size, self.num_beams).cpu().numpy()    # batch_size, num_beams
-                for i, last_generated_tokens_batch in enumerate(last_generated_tokens):
-                    # the intersect index does not use threshold, so i always equals batch_idx
-                    batch_idx = self.batch_indices[i]
-                    text_indices = constrain_index.find_text(last_generated_tokens_batch)   # num_beams, num_text
-                    # if is_empty, we put all text_indices into the batch
-                    for j, text_idx in enumerate(text_indices):
-                        # the first decoding step
-                        if self.cur_new_tokens == 1:
-                            # in case this is the first generation step, where all texts are available
-                            self.prev_text_indices[batch_idx].append(text_idx)
-                        else:
-                            self.prev_text_indices[batch_idx][j] = np.intersect1d(self.prev_text_indices[batch_idx][j], text_idx)
+                batch_beam_idx = batch_idx * self.prev_num_beams + beam_index
+                # when next token is eos, add to beam
+                # when cur_new_tokens has reached the limits, add to beam regardless of eos token
+                if beam_token == self.eos_token_id or self.cur_new_tokens == max_new_tokens - 1:
+                    # <eos> is only meaningful when being decoded within the top num_beams
+                    if beam_rank < self.num_beams:
+                        # never include a non-valid sequence in beams
+                        if beam_score != -float("inf"):
+                            if self.rank_type == "eos":
+                                # select pask_key_values based on beam_index
+                                filtered_past = ()
+                                for layer_past_key_values in past_key_values:
+                                    filtered_layer_past_key_values = ()
+                                    for layer_past_key_value in layer_past_key_values:
+                                        filtered_layer_past_key_values += (layer_past_key_value[batch_beam_idx].unsqueeze(0),)
+                                    filtered_past += (filtered_layer_past_key_values,)
+                                # slice attention_mask and encoder_outputs in model_kwargs
+                                new_model_kwargs = {"past_key_values": filtered_past}
+                                for k, v in model_kwargs.items():
+                                    if k == "past":
+                                        continue
+                                    elif k == "encoder_outputs":
+                                        new_model_kwargs[k] = type(v)({"last_hidden_state": v.last_hidden_state[batch_beam_idx].unsqueeze(0)})
+                                    elif isinstance(v, torch.Tensor):
+                                        new_model_kwargs[k] = v[batch_beam_idx].unsqueeze(0)
+                                    else:
+                                        new_model_kwargs[k] = v
+                                
+                                outputs = model(decoder_input_ids=beam_token.view(1,1), **new_model_kwargs)
+                                eos_hidden_states = outputs.decoder_hidden_states[-1][:, -1].squeeze(0) # 768
+                            
+                            else:
+                                eos_hidden_states = None
 
-        elif self.cur_new_tokens >= trsd_start_len:
+                            self._add_beam(self.global_batch_idx(batch_idx), input_ids[batch_beam_idx].tolist(), beam_score.item(), eos_hidden_state=eos_hidden_states)
+
+                else:
+                    next_beam_tokens[batch_idx, beam_idx] = beam_token
+                    next_beam_scores[batch_idx, beam_idx] = beam_score
+                    next_beam_indices[batch_idx, beam_idx] = beam_index
+                    beam_idx += 1
+
+                # jump out when beam_idx reaches the limit
+                if beam_idx == self.num_beams:
+                    break
+
+        # used to slice input_ids and model_kwargs
+        batch_beam_indices = (next_beam_indices.view(self.batch_size, -1) + self.beam_idx_bias[:self.batch_size] * self.prev_num_beams).view(-1)
+
+        input_ids = torch.cat([input_ids[batch_beam_indices, :], next_beam_tokens.view(-1, 1)], dim=-1) # B*K, L
+        # one more token
+        self.cur_len += 1
+
+        reordered_decoder_past = ()
+        for layer_past_states in past_key_values:
+            reordered_layer_past_states = ()
+            for layer_past_state in layer_past_states:
+                # need to set correct `past` for each of the four key / value states
+                reordered_layer_past_states = reordered_layer_past_states + (
+                    layer_past_state.index_select(0, batch_beam_indices),
+                )
+            reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
+        model_kwargs["past"] = reordered_decoder_past
+
+        # cut off beams
+        # encoder related model_kwargs are invariant to beams, so we just do expansion or slice
+        for k, v in model_kwargs.items():
+            if k == "encoder_outputs":
+                model_kwargs[k]["last_hidden_state"] = self._slice_inputs_by_beams(v["last_hidden_state"])
+            elif isinstance(v, torch.Tensor):
+                model_kwargs[k] = self._slice_inputs_by_beams(v)
+
+        # update prev_text_indices to match the used beams
+        if self.constrain_index_type == "intersect" and self.cur_new_tokens > 1:
+            for i, beam_idx in enumerate(next_beam_indices):
+                batch_idx = self.batch_indices[i]
+                prev_text_indices = self.prev_text_indices[batch_idx]
+                # reorder to match the selected beams
+                self.prev_text_indices[batch_idx] = [prev_text_indices[j] for j in beam_idx]
+
+        return next_beam_scores.view(-1), input_ids, model_kwargs
+
+    def handle_threshold(self, input_ids, beam_scores, model, model_kwargs, threshold, trsd_start_len, constrain_index):
+        if threshold > 0 and self.cur_new_tokens >= trsd_start_len:
             if self.constrain_index_type == "trie":
                 # check if all possible beams within each batch are less than threshold
                 for i, batch in enumerate(input_ids.unflatten(0, (self.batch_size, self.num_beams)).tolist()):
@@ -1754,39 +1884,67 @@ class BeamManagerConstantLength():
                     for seq in batch:
                         candidate = constrain_index.keys(prefix=seq)
                         candidates.extend(candidate)
+                        # maybe zero 
                         repeat_times.append(len(candidate))
-                    if len(candidates) <= threshold:
-                        batch_idx = self.batch_indices[i]
-                        # beams are global, i is local
-                        self.beams[batch_idx].extend(candidates)
+                    max_length = max([len(x) for x in candidates])
 
-                        incoming_input_ids = torch.tensor(candidates)[:, self.cur_len - 1:].to(self.device)
+                    if len(candidates) <= threshold:
+                        # this batch is finished
+                        self.batch_filter[i] = False
+                        batch_idx = self.global_batch_idx(i)
+                        # next we will modify the contents in candidates
+                        # backup for later saving
+                        candidates_tensor = candidates.copy()
+                        for j, candidate in enumerate(candidates):
+                            if len(candidate) < max_length:
+                                candidates_tensor[j] = candidate +[self.pad_token_id] * (max_length - len(candidate))
+
+                        incoming_input_ids = torch.tensor(candidates_tensor)[:, self.cur_len - 1:].to(self.device)
                         repeat_times = torch.tensor(repeat_times, device=self.device)
                         new_model_kwargs = self._slice_model_kwargs(model_kwargs, i, repeat_times)
 
                         outputs = model(decoder_input_ids=incoming_input_ids, **new_model_kwargs)
-                        if "decoder_hidden_states" in outputs:
-                            self.eos_hidden_states[batch_idx] = outputs.decoder_hidden_states[-1][:, -1]
 
                         # collect generation probability
+                        target_token_ids = incoming_input_ids[:, 1:]    # N, max_length-cur_len
+                        eos_pos = target_token_ids == self.eos_token_id
+                        eos_index = torch.arange(target_token_ids.shape[-1], device=self.device).expand(eos_pos.shape)[eos_pos]   # N
+
                         scores = outputs.logits.log_softmax(dim=-1)
-                        seq_score = scores.gather(dim=-1, index=incoming_input_ids[:, 1:, None]).squeeze(-1).sum(-1) # B
-                        prev_score = self.beam_scores.view(self.batch_size, self.num_beams)[i].repeat_interleave(repeat_times, dim=0)
-                        self.seq_scores[batch_idx] = (seq_score + prev_score).tolist()
+                        scores = scores.gather(dim=-1, index=target_token_ids[..., None]).squeeze(-1) # N, max_length-cur_len
+                        # cumulate log probs
+                        scores = torch.cumsum(scores, dim=-1)
+                        scores = scores[eos_pos]  # N
 
-                        # this batch is finished
-                        self.batch_filter[i] = False
+                        prev_scores = beam_scores.view(self.batch_size, self.num_beams)[i].repeat_interleave(repeat_times, dim=0)   # N
+                        scores = (scores + prev_scores).tolist()
 
-            elif self.constrain_index_type == "intersect":
+                        if self.rank_type == "eos":
+                            last_hidden_states = outputs.decoder_hidden_states[-1] # N, max_length, D
+                            # note that eos_index is 1 bigger than previous because our basis is incoming_token_ids now
+                            eos_hidden_states = last_hidden_states[range(last_hidden_states.shape[0]), eos_index+1] # N, D
+                        
+                        for j, candidate in enumerate(candidates):
+                            beam = (candidate,)
+                            beam += (scores[j],)
+                            if self.rank_type == "eos":
+                                beam += (eos_hidden_states[j],)
+                            else:
+                                beam += (None,)
+                            self.beams[batch_idx].append(beam)
+
+            else:
                 raise NotImplementedError("IntersectIndex with threshold is not implemented yet!")
 
+
     @torch.no_grad()
-    def search(self, model:T5ForConditionalGeneration, nbeam, threshold, trsd_start_len, max_new_tokens, constrain_index:Union[TrieIndex,IntersectIndex], **inputs):
+    def search(self, model:T5ForConditionalGeneration, nbeam, threshold, trsd_start_len, max_new_tokens, constrain_index:Union[TrieIndex,IntersectIndex], rank_type="prob", **inputs):
         """
         Perform beam search with constrain from trie_index or intersect_index. Note that the code to be decoded should be of same length.
         """
         bos_token_id = model.config.bos_token_id
         eos_token_id = model.config.eos_token_id
+        pad_token_id = model.config.pad_token_id
 
         # prepare model inputs to the encoder
         # input_tensor: the input sequence of shape (B, L)
@@ -1818,7 +1976,12 @@ class BeamManagerConstantLength():
             # if decoder-only then inputs_tensor has to be `input_ids`
             input_ids = inputs_tensor
 
-        self.prepare(nbeam, input_ids, constrain_index)
+        self.prepare(nbeam, input_ids, eos_token_id, pad_token_id, constrain_index, rank_type)
+
+        beam_scores = torch.zeros((self.batch_size, self.num_beams), device=self.device)
+        # make sure only the first beam will be selected during the first beam search iteration, thereby avoiding repetitive input_ids across beams
+        beam_scores[:, 1:] = -1e9
+        beam_scores = beam_scores.view(-1)
 
         # expand model_kwargs and input_ids to the max size, which is batch_size * num_beams
         input_ids, model_kwargs = model._expand_inputs_for_generation(
@@ -1827,18 +1990,18 @@ class BeamManagerConstantLength():
 
         while self.num_left_batch and self.cur_new_tokens < max_new_tokens:
             # num_beams is consistent in the loop
-            self.set_num_beams()
+            self._set_num_beams()
 
             # 1. adjust input_ids by past_key_values
             model_inputs = model.prepare_inputs_for_generation(input_ids, **model_kwargs)
             # 2. compute logits
             outputs = model(**model_inputs, return_dict=True)
-            next_token_logits = outputs.logits[:, -1, :]    # (batch_size * num_beams, vocab_size)
-            next_token_scores = torch.log_softmax(next_token_logits, dim=-1)  # (batch_size * num_beams, vocab_size)
+            logits = outputs.logits[:, -1, :]    # (batch_size * num_beams, vocab_size)
+            scores = torch.log_softmax(logits, dim=-1)  # (batch_size * num_beams, vocab_size)
 
             # 3. do masking based on trie or intersection
             # IMPORTANT! in this section we use prev_num_beams because input_ids are based on prev_num_beams
-            mask = torch.full_like(next_token_scores, -float("inf"))
+            mask = torch.full_like(scores, -float("inf"))
             if self.constrain_index_type == "trie":
                 # mask eos_token when cur_len < min_len; mask non-valid tokens with trie
                 for batch_id, beam_sent in enumerate(input_ids.view(self.batch_size, self.prev_num_beams, -1)):
@@ -1846,7 +2009,7 @@ class BeamManagerConstantLength():
                         mask[batch_id * self.prev_num_beams + beam_id, constrain_index.get_valid_tokens(sent.tolist())] = 0
             elif self.constrain_index_type == "intersect":
                 for batch_id, beam_tokens in enumerate(input_ids.view(self.batch_size, self.prev_num_beams, -1).cpu().numpy()):
-                    prev_text_indices = self.prev_text_indices[self.batch_indices[batch_id]] # prev_num_beams, *
+                    prev_text_indices = self.prev_text_indices[self.global_batch_idx(batch_id)] # prev_num_beams, *
                     for beam_id, tokens in enumerate(beam_tokens):
                         # find previously generated tokens
                         # at the first decoding step, there are no prev_text_indices because all documents are available
@@ -1855,63 +2018,33 @@ class BeamManagerConstantLength():
                 if self.cur_new_tokens < max_new_tokens - 1:
                     # can only generate eos_token at the last position
                     mask[:, eos_token_id] = -float("inf")
-            next_token_scores_processed = next_token_scores + mask
+            scores = scores + mask
             
             # 4. find next token
-            next_token_scores = next_token_scores_processed + self.beam_scores[:, None]
-
+            next_beam_scores = scores + beam_scores[:, None]
             # reshape for beam search
-            vocab_size = next_token_scores.shape[-1]
-            next_token_scores = next_token_scores.view(self.batch_size, -1) # (batch_size, num_beams * vocab_size)
-            next_token_scores, next_tokens = torch.topk(
-                next_token_scores, self.num_beams, dim=1, largest=True, sorted=True
-            )   # (batch_size, num_beams)
-            next_beam_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
-            next_tokens = next_tokens % vocab_size
+            vocab_size = next_beam_scores.shape[-1]
+            next_beam_scores = next_beam_scores.view(self.batch_size, -1) # (batch_size, num_beams * vocab_size)
+            # twice the beam size because we may decode to <eos>
+            next_beam_scores, next_beam_tokens = torch.topk(
+                next_beam_scores, k=self.num_beams * 2, dim=1, largest=True, sorted=True
+            )   # (batch_size, num_beams * 2)
+            next_beam_indices = torch.div(next_beam_tokens, vocab_size, rounding_mode="floor")
+            next_beam_tokens = next_beam_tokens % vocab_size
 
-            # 6. update beam_scores and input_ids according to the next token
-            self.beam_scores = next_token_scores.view(-1)
-            beam_next_tokens = next_tokens.view(-1)
+            # print(input_ids, next_beam_tokens, next_beam_scores)
+            # input()
 
-            # 7. update model kwargs corresponding to the selected beams
-            input_ids, model_kwargs = self.update_parameters_by_beam(input_ids, beam_next_tokens, model_kwargs, outputs.past_key_values, next_beam_indices)
+            # 5. update beam hypotheses if eos is decoded
+            beam_scores, input_ids, model_kwargs = self.update_beams(next_beam_tokens, next_beam_scores, next_beam_indices, input_ids, model, model_kwargs, outputs.past_key_values, max_new_tokens)
 
-            # 8. handle the finished batches according to the threshold
-            self.update_beams(input_ids, model, model_kwargs, threshold, trsd_start_len, max_new_tokens, constrain_index)
+            # 6. handle the finished batches according to the threshold
+            self.handle_threshold(input_ids, beam_scores, model, model_kwargs, threshold, trsd_start_len, constrain_index)
 
-            # 9. update model kwargs in case some batches finish
-            input_ids, model_kwargs = self.update_parameters_by_batch(input_ids, model_kwargs)
-
-    def _slice_or_expand_inputs_by_beams(self, inputs):
-        if isinstance(inputs, torch.Tensor):
-            x = inputs.unflatten(0, (self.batch_size, -1))
-            if x.shape[1] > self.num_beams:
-                inputs = x[:, :self.num_beams].flatten(0, 1)
-            elif x.shape[1] < self.num_beams:
-                inputs = x[:, [0]].expand(self.batch_size, self.num_beams, *x.shape[2:]).flatten(0, 1)
-        return inputs
-    
-    def _slice_model_kwargs(self, model_kwargs, batch_idx, repeat_times):
-        new_model_kwargs = {}
-        for k, v in model_kwargs.items():
-            if k == "past":
-                reordered_decoder_past = ()
-                for layer_past_states in v:
-                    reordered_layer_past_states = ()
-                    for layer_past_state in layer_past_states:
-                        # need to set correct `past` for each of the four key / value states
-                        reordered_layer_past_states = reordered_layer_past_states + (
-                            layer_past_state.unflatten(0, (self.batch_size, self.num_beams))[batch_idx].repeat_interleave(repeat_times, dim=0),
-                        )
-                    reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
-                new_model_kwargs["past_key_values"] = reordered_decoder_past
-            elif k == "encoder_outputs":
-                new_model_kwargs[k] = type(v)({"last_hidden_state": v.last_hidden_state.unflatten(0, (self.batch_size, self.num_beams))[batch_idx].repeat_interleave(repeat_times, dim=0)})
-            elif isinstance(v, torch.Tensor):
-                new_model_kwargs[k] = v.unflatten(0, (self.batch_size, self.num_beams))[batch_idx].repeat_interleave(repeat_times, dim=0)
-            else:
-                new_model_kwargs[k] = v
-        return new_model_kwargs
+            # 7. update model kwargs in case some batches finish
+            input_ids, beam_scores, model_kwargs = self.update_parameters_by_batch(input_ids, beam_scores, model_kwargs)
+        
+        self._finalize()
 
 
 class FlatVerifier(BasePostVerifier):

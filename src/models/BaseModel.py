@@ -1842,12 +1842,8 @@ class BaseGenerativeModel(BaseModel):
         Returns:
             retrieval result
         """
-        trie = self.index(loaders).index
+        index = self.index(loaders).index
         loader_query = loaders["query"]
-
-        def prefix_allowed_tokens_fn(batch_id, sent):
-            valid = trie.get_valid_tokens(sent.cpu().numpy())
-            return valid
 
         retrieval_result = {}
 
@@ -1856,52 +1852,71 @@ class BaseGenerativeModel(BaseModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
-        N = min(self.config.hits, self.config.nbeam)
         if self.config.save_encode:
-            query_codes = np.full((len(loader_query.sampler), N, self.config.code_length), trie.pad_token_id, dtype=np.int32)
+            if self.config.beam_trsd == 0:
+                N = min(self.config.hits, self.config.nbeam)
+            else:
+                N = self.config.beam_trsd
+            query_codes = np.full((len(loader_query.sampler), N, self.config.code_length), -1, dtype=np.int32)
+
+        beam_manager = BeamManager()
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
             query = self._move_to_device(x["query"])
+            encoder_outputs = self.plm.encoder(**query)
             B = query["input_ids"].shape[0]
-            outputs = self._generate(
-                **query,
-                min_length=None,
-                max_new_tokens=self.config.code_length - 1,
-                do_sample=False,
-                return_dict_in_generate=True,
-                output_scores=True,
-                num_return_sequences=N,
-                num_beams=self.config.nbeam,
-                length_penalty=self.config.length_penalty,
-                prefix_allowed_tokens_fn=prefix_allowed_tokens_fn
-            )
-
-            codes = outputs.sequences.view(B, N, -1).cpu().numpy()   # B, n, L; n is the num_return_sequences
-            scores = outputs.sequences_scores.view(B, N).cpu().numpy()    # B, n
-            # cache the codes
             end_idx = start_idx + B
 
-            if self.config.save_encode:
-                query_codes[start_idx: end_idx, :, :codes.shape[-1]] = codes
+            beam_manager.search(
+                model=self.plm, 
+                nbeam=self.config.nbeam, 
+                threshold=self.config.get("beam_trsd", 0), 
+                trsd_start_len=self.config.get("trsd_start_len", 0), 
+                max_new_tokens=self.config.code_length - 1, 
+                constrain_index=index,
+                rank_type=self.config.get("rank_type", "prob"),
+                **query, 
+                encoder_outputs=encoder_outputs
+            )
+            beams = beam_manager.beams
+            eos_hidden_states = beam_manager.eos_hidden_states
 
-            for j, batch_code in enumerate(codes):
+            # ranking by score
+            if self.config.rank_type == "eos":
+                if isinstance(eos_hidden_states[0], torch.Tensor):
+                    eos_hidden_states = torch.cat(eos_hidden_states, dim=0)
+                elif isinstance(eos_hidden_states[0], list):
+                    eos_hidden_states = torch.stack(sum(eos_hidden_states, []), dim=0)
+                scores = self.scorer(eos_hidden_states).squeeze(-1).tolist() # B * trsd
+            elif self.config.rank_type == "prob":            
+                # ranking by generation prob
+                scores = sum(beam_manager.seq_scores, [])
+            else:
+                raise NotImplementedError(f"Ranking type {self.config.ranking_type} is not implemented yet!")
+
+            if self.config.save_encode:
+                for batch_beam in beams:
+                    query_codes[start_idx: end_idx, :len(batch_beam)] = batch_beam
+
+            offset = 0
+            for j, batch in enumerate(beams):
                 res = defaultdict(list)
-                for k, c in enumerate(batch_code):
-                    # sometimes the generated code may stop at early steps, just do padding otherwise the leaf cannot be found
-                    if len(c) < self.config.code_length:
-                        c = c.tolist() + [0] * (self.config.code_length - len(c))
-                    ids = trie[c]
+                for k, c in enumerate(batch):
+                    if beam_manager.constrain_index_type == "trie":
+                        ids = index[c]
+                    elif beam_manager.constrain_index_type == "intersect":
+                        # need to provide prev_text_indices
+                        ids = index[c, beam_manager.prev_text_indices[j][k]]
                     for id in ids:
-                        res[id].append(scores[j, k])
-                # may be duplicated doc ids (1 doc with 2 codes)
+                        res[id].append(scores[offset + k])
+                offset += len(batch)
                 retrieval_result[j + start_idx + query_start_idx] = [(k, max(v)) for k, v in res.items()]
 
             start_idx = end_idx
-
             if self.config.debug:
                 if i > 2:
                     break
-
+        
         if self.config.save_encode:
             self.save_to_mmp(
                 os.path.join(self.retrieve_dir, "query_codes.mmp"),

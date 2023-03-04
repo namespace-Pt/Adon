@@ -558,8 +558,8 @@ class BaseModel(nn.Module):
             try:
                 if self.config.dataset == "NQ-open":
                     markdown_format_metric = "|".join([str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@20"]), str(metrics["Recall@100"])]) + "|"
-                elif self.config.dataset in ["NQ", "NQ-url"]:
-                    markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
+                elif self.config.dataset in ["NQ"]:
+                    markdown_format_metric = "|".join([str(metrics["MRR@5"]), str(metrics["MRR@10"]), str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
                 else:
                     markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
             except:
@@ -644,53 +644,6 @@ class BaseModel(nn.Module):
             self.logger.warning(f"Missing Keys: {missing_keys}")
         if len(unexpected_keys):
             self.logger.warning(f"Unexpected Keys: {unexpected_keys}")
-
-
-    def generate_code(self, loaders):
-        """
-        Generate text codes used in :doc:`/sources/experiments/Model-Based IR`.
-        """
-        assert not self.config.is_distributed
-        # the code is bind to the plm_tokenizer
-        code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
-        # all codes are led by 0 and padded by -1
-        self.logger.info(f"generating codes from {self.config.code_type} with code_length: {self.config.code_length}, saving at {code_path}...")
-
-        loader_text = loaders["text"]
-        text_num = len(loader_text.dataset)
-
-        if self.config.code_type == "title":
-            from utils.util import _get_title_code
-
-            collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
-            makedirs(code_path)
-
-            # load all saved token ids
-            text_codes = np.memmap(
-                code_path,
-                dtype=np.int32,
-                mode="w+",
-                shape=(text_num, self.config.code_length)
-            )
-            # the codes are always led by 0 and padded by -1
-            text_codes[:, 0] = tokenizer.pad_token_id
-            text_codes[:, 1:] = -1
-
-            preprocess_threads = 32
-            all_line_count = text_num
-
-            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
-
-            arguments = []
-            for i in range(preprocess_threads):
-                start_idx = round(all_line_count * i / preprocess_threads)
-                end_idx = round(all_line_count * (i+1) / preprocess_threads)
-                arguments.append((collection_path, code_path, all_line_count, start_idx, end_idx, tokenizer, self.config.code_length))
-            with mp.Pool(preprocess_threads) as p:
-                p.starmap(_get_title_code, arguments)
-
-        else:
-            raise NotImplementedError
 
 
 
@@ -1237,11 +1190,9 @@ class BaseSparseModel(BaseModel):
         """
         Generate codes from the cache embedding files.
         """
-        assert not self.config.is_distributed
+        if self.config.is_main_proc:
+            from utils.util import _get_token_code
 
-        if self.config.code_type == "title":
-            return super().generate_code(loaders)
-        else:
             # the code is bind to the code_tokenizer
             code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
             self.logger.info(f"generating codes from {self.config.code_type} with code_length: {self.config.code_length}, saving at {code_path}...")
@@ -1266,87 +1217,49 @@ class BaseSparseModel(BaseModel):
 
             code_order = self.config.code_type.split("-")[-1]
 
-            # in this case, we just filter out unique tokens and select top k important tokens
-            if self.config.plm_tokenizer == self.config.code_tokenizer:
-                from utils.util import _get_token_code_for_aligned_tokenizer
+            stop_words = set()
+            punctuations = set([x for x in ";:'\\\"`~[]<>()\{\}/|?!@$#%^&*…-_=+,."])
+            nltk_stop_words = set(["a", "about", "also", "am", "to", "an", "and", "another", "any", "anyone", "are", "aren't", "as", "at", "be", "been", "being", "but", "by", "despite", "did", "didn't", "do", "does", "doesn't", "doing", "done", "don't", "each", "etc", "every", "everyone", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't", "having", "he", "he'd", "he'll", "her", "here", "here's", "hers", "herself", "he's", "him", "himself", "his", "however", "i", "i'd", "if", "i'll", "i'm", "in", "into", "is", "isn't", "it", "its", "it's", "itself", "i've", "just", "let's", "like", "lot", "may", "me", "might", "mightn't", "my", "myself", "no", "nor", "not", "of", "on", "onto", "or", "other", "ought", "oughtn't", "our", "ours", "ourselves", "out", "over", "shall", "shan't", "she", "she'd", "she'll", "she's", "since", "so", "some", "something", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "tht", "to", "too", "usually", "very", "via", "was", "wasn't", "we", "we'd", "well", "we'll", "were", "we're", "weren't", "we've", "will", "with", "without", "won't", "would", "wouldn't", "yes", "yet", "you", "you'd", "you'll", "your", "you're", "yours", "yourself", "yourselves", "you've"])
+            # include punctuations
+            stop_words = stop_words | punctuations
+            # include nltk stop words
+            stop_words = stop_words | nltk_stop_words
+            # include numbers in stopwords
+            stop_words.add(r"\d")
 
-                # set the number of tokens to be selected
-                encode_output = self.encode_text(loaders["text"], load_all_encode=True)
-                text_token_ids = encode_output.token_ids
-                text_token_embeddings = encode_output.embeddings.squeeze(-1)
+            thread_num = 0
+            collection_dir = os.path.join(self.config.cache_root, "index", self.name, "impact-word", "collection")
+            for path in os.listdir(collection_dir):
+                # check if current path is a file
+                if os.path.isfile(os.path.join(collection_dir, path)):
+                    thread_num += 1
 
-                stop_token_ids = set([x[1] for x in self.config.special_token_ids.values()])
+            # each thread creates one jsonl file
+            text_num_per_thread = text_num / thread_num
 
-                thread_num = 32
-                # each thread creates one jsonl file
-                text_num_per_thread = text_num / thread_num
+            arguments = []
+            # re-tokenize words in the collection folder
+            for i in range(thread_num):
+                input_path = os.path.join(collection_dir, "docs{:02d}.json".format(i))
+                start_idx = round(text_num_per_thread * i)
+                end_idx = round(text_num_per_thread * (i+1))
 
-                arguments = []
-                # re-tokenize words in the collection folder
-                for i in range(thread_num):
-                    start_idx = round(text_num_per_thread * i)
-                    end_idx = round(text_num_per_thread * (i+1))
+                arguments.append((
+                    input_path,
+                    code_path,
+                    text_num,
+                    start_idx,
+                    end_idx,
+                    tokenizer,
+                    self.config.code_length,
+                    code_order,
+                    stop_words,
+                    self.config.get("code_sep", " ")
+                ))
 
-                    arguments.append((
-                        code_path,
-                        text_token_ids[start_idx: end_idx],
-                        text_token_embeddings[start_idx: end_idx],
-                        text_num,
-                        start_idx,
-                        tokenizer,
-                        self.config.code_length,
-                        code_order,
-                        stop_token_ids
-                    ))
-
-                with mp.Pool(thread_num) as p:
-                    p.starmap(_get_token_code_for_aligned_tokenizer, arguments)
-
-            else:
-                from utils.util import _get_token_code_for_misaligned_tokenizer
-
-                stop_words = set()
-                punctuations = set([x for x in ";:'\\\"`~[]<>()\{\}/|?!@$#%^&*…-_=+,."])
-                nltk_stop_words = set(["a", "about", "also", "am", "to", "an", "and", "another", "any", "anyone", "are", "aren't", "as", "at", "be", "been", "being", "but", "by", "despite", "did", "didn't", "do", "does", "doesn't", "doing", "done", "don't", "each", "etc", "every", "everyone", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't", "having", "he", "he'd", "he'll", "her", "here", "here's", "hers", "herself", "he's", "him", "himself", "his", "however", "i", "i'd", "if", "i'll", "i'm", "in", "into", "is", "isn't", "it", "its", "it's", "itself", "i've", "just", "let's", "like", "lot", "may", "me", "might", "mightn't", "my", "myself", "no", "nor", "not", "of", "on", "onto", "or", "other", "ought", "oughtn't", "our", "ours", "ourselves", "out", "over", "shall", "shan't", "she", "she'd", "she'll", "she's", "since", "so", "some", "something", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "tht", "to", "too", "usually", "very", "via", "was", "wasn't", "we", "we'd", "well", "we'll", "were", "we're", "weren't", "we've", "will", "with", "without", "won't", "would", "wouldn't", "yes", "yet", "you", "you'd", "you'll", "your", "you're", "yours", "yourself", "yourselves", "you've"])
-                # include punctuations
-                stop_words = stop_words | punctuations
-                # include nltk stop words
-                stop_words = stop_words | nltk_stop_words
-                # include numbers in stopwords
-                stop_words.add(r"\d")
-
-                thread_num = 0
-                collection_dir = os.path.join(self.config.cache_root, "index", self.name, "impact-word", "collection")
-                for path in os.listdir(collection_dir):
-                    # check if current path is a file
-                    if os.path.isfile(os.path.join(collection_dir, path)):
-                        thread_num += 1
-
-                # each thread creates one jsonl file
-                text_num_per_thread = text_num / thread_num
-
-                arguments = []
-                # re-tokenize words in the collection folder
-                for i in range(thread_num):
-                    input_path = os.path.join(collection_dir, "docs{:02d}.json".format(i))
-                    start_idx = round(text_num_per_thread * i)
-                    end_idx = round(text_num_per_thread * (i+1))
-
-                    arguments.append((
-                        input_path,
-                        code_path,
-                        text_num,
-                        start_idx,
-                        end_idx,
-                        tokenizer,
-                        self.config.code_length,
-                        code_order,
-                        stop_words,
-                    ))
-
-                # the collection has no special_tokens so we don't need to filter them out
-                with mp.Pool(thread_num) as p:
-                    p.starmap(_get_token_code_for_misaligned_tokenizer, arguments)
+            # the collection has no special_tokens so we don't need to filter them out
+            with mp.Pool(thread_num) as p:
+                p.starmap(_get_token_code, arguments)
 
 
 
@@ -1585,6 +1498,7 @@ class BaseDenseModel(BaseModel):
         return retrieval_result
 
 
+    # TODO: review this function
     @torch.no_grad()
     def cluster(self, loaders:LOADERS):
         """Perform clusering over cached embeddings.
@@ -1705,10 +1619,7 @@ class BaseDenseModel(BaseModel):
         """
         Generate codes from the cached clusering assignments.
         """
-        if self.config.code_type == "title":
-            return super().generate_code(loaders)
-
-        else:
+        if self.config.is_main_proc:
             # the code is bind to the code_tokenizer
             code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
             # all codes are led by 0 and padded by -1
@@ -1766,19 +1677,8 @@ class BaseGenerativeModel(BaseModel):
     """
     def __init__(self, config:Config):
         super().__init__(config)
-
         #: str: we separate the saving folder of generative model
         self.code_dir = os.path.join(self.config.cache_root, "codes", self.name if self.config.code_type == "self" else self.config.code_type, self.config.code_tokenizer, str(self.config.code_length))
-
-
-    def _generate(self, **kargs):
-        """
-        Generation function to be used when searching.
-        """
-        codes = self.plm.generate(
-            **kargs
-        )
-        return codes
 
 
     @synchronize
@@ -1802,8 +1702,8 @@ class BaseGenerativeModel(BaseModel):
             rank=self.config.rank,
             save_dir=self.code_dir,
             pad_token_id=self.config.special_token_ids["pad"][1],
-            text_num=len(loader_text.dataset),
-            token_num=self.config.vocab_size,
+            eos_token_id=self.config.special_token_ids["sep"][1],
+            sep_token_id=AutoTokenizer.from_pretrained(self.config.plm_dir).convert_tokens_to_ids(self.config.code_sep) if self.config.get("code_sep") is not None else None,
         )
 
         index.fit(
@@ -1852,13 +1752,6 @@ class BaseGenerativeModel(BaseModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
-        if self.config.save_encode:
-            if self.config.beam_trsd == 0:
-                N = min(self.config.hits, self.config.nbeam)
-            else:
-                N = self.config.beam_trsd
-            query_codes = np.full((len(loader_query.sampler), N, self.config.code_length), -1, dtype=np.int32)
-
         beam_manager = BeamManager()
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
@@ -1883,20 +1776,13 @@ class BaseGenerativeModel(BaseModel):
 
             # ranking by score
             if self.config.rank_type == "eos":
-                if isinstance(eos_hidden_states[0], torch.Tensor):
-                    eos_hidden_states = torch.cat(eos_hidden_states, dim=0)
-                elif isinstance(eos_hidden_states[0], list):
-                    eos_hidden_states = torch.stack(sum(eos_hidden_states, []), dim=0)
-                scores = self.scorer(eos_hidden_states).squeeze(-1).tolist() # B * trsd
+                eos_hidden_states = torch.stack(sum(eos_hidden_states, []), dim=0)
+                scores = self.scorer(eos_hidden_states).squeeze(-1).tolist()
             elif self.config.rank_type == "prob":            
                 # ranking by generation prob
                 scores = sum(beam_manager.seq_scores, [])
             else:
                 raise NotImplementedError(f"Ranking type {self.config.ranking_type} is not implemented yet!")
-
-            if self.config.save_encode:
-                for batch_beam in beams:
-                    query_codes[start_idx: end_idx, :len(batch_beam)] = batch_beam
 
             offset = 0
             for j, batch in enumerate(beams):
@@ -1904,9 +1790,11 @@ class BaseGenerativeModel(BaseModel):
                 for k, c in enumerate(batch):
                     if beam_manager.constrain_index_type == "trie":
                         ids = index[c]
-                    elif beam_manager.constrain_index_type == "intersect":
+                    elif beam_manager.constrain_index_type == "wordset":
                         # need to provide prev_text_indices
-                        ids = index[c, beam_manager.prev_text_indices[j][k]]
+                        ids = beam_manager.prev_text_indices[j][k]
+                    else:
+                        raise NotImplementedError(f"Constrain index {self.config.index_type} not implemented yet!")
                     for id in ids:
                         res[id].append(scores[offset + k])
                 offset += len(batch)
@@ -1917,15 +1805,52 @@ class BaseGenerativeModel(BaseModel):
                 if i > 2:
                     break
         
-        if self.config.save_encode:
-            self.save_to_mmp(
-                os.path.join(self.retrieve_dir, "query_codes.mmp"),
-                shape=(len(loader_query.dataset), *query_codes.shape[1:]),
-                dtype=query_codes.dtype,
-                loader=loader_query,
-                obj=query_codes
-            )
-
         return retrieval_result
 
 
+    def generate_code(self, loaders):
+        """
+        Generate text codes used in :doc:`/sources/experiments/Model-Based IR`.
+        """
+        if self.config.is_main_proc:
+            # the code is bind to the plm_tokenizer
+            code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
+            # all codes are led by 0 and padded by -1
+            self.logger.info(f"generating codes from {self.config.code_type} with code_length: {self.config.code_length}, saving at {code_path}...")
+
+            loader_text = loaders["text"]
+            text_num = len(loader_text.dataset)
+
+            if self.config.code_type == "title":
+                from utils.util import _get_title_code, makedirs
+
+                collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
+                makedirs(code_path)
+
+                # load all saved token ids
+                text_codes = np.memmap(
+                    code_path,
+                    dtype=np.int32,
+                    mode="w+",
+                    shape=(text_num, self.config.code_length)
+                )
+                # the codes are always led by 0 and padded by -1
+                text_codes[:, 0] = tokenizer.pad_token_id
+                text_codes[:, 1:] = -1
+
+                preprocess_threads = 32
+                all_line_count = text_num
+
+                tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+
+                arguments = []
+                for i in range(preprocess_threads):
+                    start_idx = round(all_line_count * i / preprocess_threads)
+                    end_idx = round(all_line_count * (i+1) / preprocess_threads)
+                    arguments.append((collection_path, code_path, all_line_count, start_idx, end_idx, tokenizer, self.config.code_length))
+                with mp.Pool(preprocess_threads) as p:
+                    p.starmap(_get_title_code, arguments)
+
+            else:
+                raise NotImplementedError
+        

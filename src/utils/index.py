@@ -1215,7 +1215,7 @@ class TrieIndex(BaseIndex):
     """
     TrieIndex Index.
     """
-    def __init__(self, rank:int=0, save_dir:str=".", pad_token_id:int=0, **kwargs):
+    def __init__(self, rank:int=0, save_dir:str=".", save_name:Optional[str]=None, **kwargs):
         """
         Args:
             save_dir: the directory to save the trie index
@@ -1224,8 +1224,10 @@ class TrieIndex(BaseIndex):
         super().__init__()
         self.rank = rank
         self.save_dir = save_dir
-        self.save_path = os.path.join(save_dir, type(self).__name__.lower())
-        self.pad_token_id = pad_token_id
+        if save_name is None:
+            self.save_path = os.path.join(save_dir, type(self).__name__.lower())
+        else:
+            self.save_path = os.path.join(save_dir, save_name)
         self._root = Node()
 
     def _find(self, key):
@@ -1479,98 +1481,173 @@ class TrieIndex(BaseIndex):
 
 
 
-class IntersectIndex(BaseIndex):
-    def __init__(self, text_num, token_num, save_dir, rank, **kwargs) -> None:
+class WordSetIndex(BaseIndex):
+    def __init__(self, save_dir, sep_token_id, rank=0, pad_token_id=0, eos_token_id=1, **kwargs) -> None:
         """
         Construct inverted index. Search with set intersection.
 
         Args:
             save_dir: folder to save inverted index
+            sep_token_id: the token id that separates words
         """
         super().__init__()
-        self.text_num = text_num
-        self.token_num = token_num
         self.rank = rank
         self.save_dir = save_dir
-        self.text_idx_inverted_lists_path = os.path.join(save_dir, f"text_idx_inverted_lists.npy")
+        self.sep_token_id = sep_token_id
+        self.pad_token_id = pad_token_id
+        self.eos_token_id = eos_token_id
     
 
-    def fit(self, text_codes:np.ndarray, load_index:bool=False, threads:int=10, shards:int=32, **kwargs):
+    def fit(self, text_codes:np.ndarray, load_index:bool=True, threads:int=10, shards:int=32, **kwargs):
         """ Build the inverted lists.
         """
         self.logger.info("fitting inverted index...")
-        if load_index and os.path.exists(self.text_idx_inverted_lists_path):
-            self.text_idx_inverted_lists = np.load(self.text_idx_inverted_lists_path, allow_pickle=True)
+        docs_path = os.path.join(self.save_dir, "docs.npy")
+        inverse_vocab_path = os.path.join(self.save_dir, "inverse_vocab.npy")
+        inverted_lists_path = os.path.join(self.save_dir, "inverted_lists.npy")
+        vocab = TrieIndex(save_dir=self.save_dir, save_name="vocab")
+
+        if load_index and os.path.exists(inverted_lists_path):
+            self.docs = np.load(docs_path)
+            self.inverse_vocab = np.load(inverse_vocab_path)
+            self.inverted_lists = np.load(inverted_lists_path, allow_pickle=True)
+            vocab.load()
+            self.vocab = vocab
 
         else:
             if self.rank == 0:
-                text_num_per_thread = len(text_codes) / shards
-                # tmp_dir = os.path.join(self.save_dir, "posting_lists_tmp", str(self.device.index))
-                arguments = []
-                for i in range(shards):
-                    start_idx = round(text_num_per_thread * i)
-                    end_idx = round(text_num_per_thread * (i+1))
-
-                    arguments.append((
-                        text_codes[start_idx: end_idx],
-                        # offset to this shard
-                        start_idx,
-                        self.token_num,
-                        # no special tokens are considered
-                        set(),
-                        True
-                    ))
-
-                text_idx_inverted_lists = [[] for _ in range(self.token_num)]
-
-                with mp.Pool(threads) as p:
-                    # imap returns an iterator
-                    outputs = p.imap(build_inverted_lists, arguments)
-
-                    self.logger.info("merging shards...")
-                    for inv_lists_pair in tqdm(outputs, total=shards, ncols=100, leave=False):
-                        text_idx_inverted_list = inv_lists_pair[0]
-                        for j in range(self.token_num):
-                            text_idx_inverted_lists[j].extend(text_idx_inverted_list[j])
-
-                for i in tqdm(range(self.token_num), ncols=100, leave=False):
-                    text_indices = text_idx_inverted_lists[i]
-                    text_idx_inverted_lists[i] = np.array(text_indices, dtype=np.int32)
+                word_idx = 0
+                max_subword_count = 0
+                max_word_count = 0
                 
-                text_idx_inverted_lists = np.array(text_idx_inverted_lists, dtype=object)
-                
+                inverse_vocab = []
+
+                docs = []
+                inverted_lists = []
+                # strip off the leading 0
+                for i, text_code in enumerate(tqdm(text_codes[:, 1:], ncols=100)):
+                    # collect subwords of a word (words are separated by sep_token_id in text_codes)
+                    word = []
+                    # collect word ids of a document
+                    doc = []
+                    for code in text_code:
+                        word.append(code)
+                        if code == self.sep_token_id:
+                            if len(word) > max_subword_count:
+                                max_subword_count = len(word)
+                            try:
+                                word_id = vocab[word][0]
+                            except KeyError:
+                                word_id = word_idx
+                                vocab[word] = word_id
+                                # very important to add the copy here to make sure the word is deep copied
+                                inverse_vocab.append(word.copy())
+                                # create new inverted lists for this word
+                                inverted_lists.append([])
+                                word_idx += 1
+                            # since the trie automatically saves the word id in a list, just slice it out
+                            doc.append(word_id)
+                            # add to inverted lists
+                            inverted_lists[word_id].append(i)
+                            word.clear()
+                    if len(doc) > max_word_count:
+                        max_word_count = len(doc)
+                    docs.append(doc)
+
+                inverted_lists = np.array([np.array(x, dtype=np.int32) for x in inverted_lists], dtype=object)
+                # pad the subwords so that all of them are equal in length
+                inverse_vocab = np.array([x + [-1] * (max_subword_count - len(x)) for x in inverse_vocab], dtype=np.int32)
+                # there are by default the same number of words within each document
+                docs = np.array([x + [-1] * (max_word_count - len(x)) for x in docs], dtype=np.int32)
+
                 # always save the inverted lists because other processes want to load it
                 self.logger.info(f"saving index at {self.save_dir}...")
                 os.makedirs(self.save_dir, exist_ok=True)
-                np.save(self.text_idx_inverted_lists_path, text_idx_inverted_lists, allow_pickle=True)
+
+                np.save(docs_path, docs)
+                np.save(inverse_vocab_path, inverse_vocab)
+                np.save(inverted_lists_path, inverted_lists, allow_pickle=True)
+                vocab.save()
                 
-                del text_idx_inverted_lists
-
             synchronize()
-            self.text_idx_inverted_lists = np.load(self.text_idx_inverted_lists_path, allow_pickle=True)
-        
-        # save text_codes for looking up in the following
-        self.text_codes = text_codes
-        self.all_tokens = np.unique(text_codes)
+            self.docs = np.load(docs_path)
+            self.inverse_vocab = np.load(inverse_vocab_path)
+            self.inverted_lists = np.load(inverted_lists_path, allow_pickle=True)
+            vocab.load()
+            self.vocab = vocab
+        # the number of subwords of each word
+        self.subword_num = (self.inverse_vocab != -1).sum(-1)
 
-    def find_text(self, tokens:np.ndarray):
-        text_indices = self.text_idx_inverted_lists[tokens] # num_tokens, num_text
-        return text_indices
     
-    def get_valid_tokens(self, text_indices, prefix):
-        if len(prefix == 1):
-            return self.all_tokens
-        valid_tokens = self.text_codes[text_indices].reshape(-1)
-        # forbid previously generated tokens
-        # non_overlap = ~((valid_tokens[:, 1] == prefix).sum(-1).astype(bool))
-        # valid_tokens = valid_tokens[non_overlap]
+    def get_valid_tokens(self, prev_text_indices:np.ndarray, prev_words:np.ndarray, prefix:np.ndarray):
+        """
+        Get valid tokens to generate in the next step.
+
+        1. if a word is not finished, find it in the trie
+        2. if a word is finished, start a new word, which is valid (the resulted word set is a subset of at least one doc)
+        """
+        if prefix[-1] == self.pad_token_id or prefix[-1] == self.sep_token_id:
+            if prev_text_indices is not None:
+                # find valid words
+                valid_words = self.docs[prev_text_indices].reshape(-1)
+                # get unique words
+                valid_words = np.unique(valid_words[valid_words != -1])
+                # forbid previously generated words
+                valid_words = np.setdiff1d(valid_words, prev_words, assume_unique=True)
+
+                # non_overlap = ~((valid_words[:, None] == prev_words).sum(-1).astype(bool))
+                # valid_words = valid_words[non_overlap]
+                # get the first token of all valid words
+                valid_tokens = self.inverse_vocab[valid_words][:, 0]  # nWord
+            else:
+                # at the first generation step, all words are valid
+                valid_tokens = self.inverse_vocab[:, 0]
+
+        else:
+            # find the index of the last occurrence of the separator
+            separator_index = np.argwhere(prefix == self.sep_token_id)
+            if len(separator_index):
+                unfinished_word = prefix[separator_index[-1, 0] + 1:]
+            else:
+                # in case this is the first word
+                # the first element in prefix is always pad_token_id
+                unfinished_word = prefix[1:]
+            valid_tokens = self.vocab.get_valid_tokens(unfinished_word)
+            
+            # we aggressively prohibit deplicated words to be generated
+            # if unfinished word is the prefix of a previously generated word
+            # we forbid separator to be generated
+            if prev_words is not None:
+                prev_word_tokens = self.inverse_vocab[prev_words][:, :len(unfinished_word)]   # x,y
+                prev_word_token_num = self.subword_num[prev_words]  # x
+                
+                # minus one because unifinished_word doesn't have separator
+                if ((unfinished_word[None, :] == prev_word_tokens).sum(-1) == prev_word_token_num - 1).any():
+                    valid_tokens = [x for x in valid_tokens if x != self.sep_token_id]
         return valid_tokens
     
+    def get_word(self, input_id:np.ndarray):
+        separator_index = np.argwhere(input_id == self.sep_token_id)            
+        if len(separator_index) == 1:
+            # in case this is the first generated word
+            word_tokens = input_id[1:]
+        else:
+            word_tokens = input_id[separator_index[-2, 0] + 1:]
+        # NOTE: add [0] because the word idxs are stored in list
+        return self.vocab[word_tokens][0]
+
+    def get_text(self, word, prev_text_indices=None):
+        text_indices = self.inverted_lists[word]
+        if prev_text_indices is not None:
+            text_indices = np.intersect1d(text_indices, prev_text_indices, assume_unique=True)
+        return text_indices
+
     def __getitem__(self, key):
         tokens, prev_text_idx = key
-        text_idx = self.find_text(tokens[-1])
-        res = np.intersect1d(text_idx, prev_text_idx)
+        text_idx = self.docs[tokens[-1]]
+        res = np.intersect1d(text_idx, prev_text_idx, assume_unique=True)
         return res
+
 
 
 class BeamManager():
@@ -1633,29 +1710,31 @@ class BeamManager():
                 new_model_kwargs[k] = v
         return new_model_kwargs
 
-    def _add_beam(self, batch_idx:int, hypothesis: list, score: float, eos_hidden_state=Optional[torch.Tensor]):
+    def _add_beam(self, batch_idx:int, hypothesis:Union[list,np.ndarray], score:float, eos_hidden_state:Optional[torch.Tensor]=None, text_idx:Union[list,np.ndarray]=None, word_set:Union[list,np.ndarray]=None):
         """
         Update self.beams
         """        
         # automatically add eos token id
-        if hypothesis[-1] != self.eos_token_id:
+        if hypothesis is not None and hypothesis[-1] != self.eos_token_id:
             hypothesis.append(self.eos_token_id)
         
         beams = self.beams[batch_idx]
+        beam = (hypothesis, score, eos_hidden_state, text_idx, word_set)
+
         if len(beams) == 0:
             # the first hypothesis in this batch
-            beams.append((hypothesis, score, eos_hidden_state))
+            beams.append(beam)
         else:
             for i, x in enumerate(beams):
                 # when the current hypothesis's score is bigger than the stored one, insert it
                 if score > x[1]:
-                    beams.insert(i, (hypothesis, score, eos_hidden_state))
+                    beams.insert(i, beam)
                     # very important, find the right place and exit
                     # otherwise causes infinite loop
                     break
             else:
                 # when the current hypothesis's score is the smallest, just append it at the tail
-                beams.append((hypothesis, score, eos_hidden_state))
+                beams.append(beam)
     
     def _finalize(self):
         """
@@ -1663,10 +1742,13 @@ class BeamManager():
         There are at least num_beams valid hypotheses, and some non-sence sequences, we can tell if the score is -inf.
         """
         has_eos_hidden_state = self.beams[0][0][2] != None
+        has_text_idx = self.beams[0][0][3] != None
         for i, batch_beams in enumerate(self.beams):
             self.seq_scores[i] = [x[1] for x in batch_beams]
             if has_eos_hidden_state:
                 self.eos_hidden_states[i] = [x[2] for x in batch_beams]
+            if has_text_idx:
+                self.prev_text_indices[i] = [x[3] for x in batch_beams]
             self.beams[i] = [x[0] for x in batch_beams]
 
     def prepare(self, nbeam, input_ids, eos_token_id, pad_token_id, constrain_index, rank_type):
@@ -1694,53 +1776,15 @@ class BeamManager():
         self._set_num_beams()
 
         self.constrain_index_type = type(constrain_index).__name__[:-5].lower()
-        if self.constrain_index_type == "intersect":
+        if self.constrain_index_type == "wordset":
             # store the text_indices corresponding to previously generated tokens
-            self.prev_text_indices = [[] for _ in range(batch_size)]
-        
+            self.prev_text_indices = [[None for _ in range(self.num_beams)] for _ in range(batch_size)]        
+            # use numpy array to store previously generated words to overcome the shallow copy issue in python lists
+            self.prev_words = [[None for _ in range(self.num_beams)] for _ in range(batch_size)]
+
         # to bias the beam_indices to the batch_beam_indices
         self.beam_idx_bias = torch.arange(self.batch_size, device=self.device).unsqueeze(-1)
-
-    def update_parameters_by_beam(self, input_ids, next_beam_tokens, next_beam_indices, model_kwargs, past_key_values):
-        """
-        Update input_ids by concatenation; Update cur_len plusing one; Update past and encoder_outputs in model_kwargs according to the new num_beams. Select past_key_values based on batch_beam_indices.
-        """
-        # bias the beam index to the batch_beam_index
-        # use prev_num_beams because the offset is reletive to the input_ids
-        batch_beam_indices = (next_beam_indices.view(self.batch_size, -1) + self.beam_idx_bias[:self.batch_size] * self.prev_num_beams).view(-1)
-        input_ids = torch.cat([input_ids[batch_beam_indices, :], next_beam_tokens.unsqueeze(-1)], dim=-1) # B*K, L
-        # one more token
-        self.cur_len += 1
-        
-        # cut off beams
-        # encoder related model_kwargs are invariant to beams, so we just do expansion or slice
-        for k, v in model_kwargs.items():
-            if k == "encoder_outputs":
-                model_kwargs[k]["last_hidden_state"] = self._slice_inputs_by_beams(v["last_hidden_state"])
-            elif isinstance(v, torch.Tensor):
-                model_kwargs[k] = self._slice_inputs_by_beams(v)
-
-        reordered_decoder_past = ()
-        for layer_past_states in past_key_values:
-            reordered_layer_past_states = ()
-            for layer_past_state in layer_past_states:
-                # need to set correct `past` for each of the four key / value states
-                reordered_layer_past_states = reordered_layer_past_states + (
-                    layer_past_state.index_select(0, batch_beam_indices),
-                )
-            reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
-        model_kwargs["past"] = reordered_decoder_past
-
-        # update prev_text_indices to match the used beams
-        if self.constrain_index_type == "intersect" and self.cur_new_tokens > 1:
-            for i, beam_idx in enumerate(next_beam_indices):
-                batch_idx = self.batch_indices[i]
-                prev_text_indices = self.prev_text_indices[batch_idx]
-                # reorder to match the selected beams
-                self.prev_text_indices[batch_idx] = [prev_text_indices[j] for j in beam_idx]
-
-        return input_ids, model_kwargs
-                
+      
     def update_parameters_by_batch(self, input_ids, beam_scores, model_kwargs):
         # discard model_kwargs corresponding to the finished batches
         if self.num_left_batch < self.batch_size:
@@ -1766,10 +1810,10 @@ class BeamManager():
             self.batch_filter = self.batch_filter[self.batch_filter]
         return input_ids, beam_scores, model_kwargs
     
-    def update_beams(self, beam_tokens, beam_scores, beam_indices, input_ids, model, model_kwargs, past_key_values, max_new_tokens):
+    def update_beams(self, beam_tokens, beam_scores, beam_indices, input_ids, model, model_kwargs, past_key_values, max_new_tokens, constrain_index):
         """
-        1. update beams if eos is decoded
-        2. update beams if threshold is reached
+        1. update beams if eos is decoded for trie index
+        2. update beams if the decoded words correspond to a unique doc for wordset index
         3. update input_ids by concatenation
         4. update model_kwargs by next_beam_indices
 
@@ -1783,59 +1827,130 @@ class BeamManager():
         next_beam_scores = torch.zeros((self.batch_size, self.num_beams), device=self.device)
         next_beam_indices = torch.zeros((self.batch_size, self.num_beams), dtype=beam_indices.dtype, device=self.device)
 
-        for batch_idx, (batch_beam_tokens, batch_beam_scores, batch_beam_indices) in enumerate(zip(beam_tokens, beam_scores, beam_indices)):
+        if self.constrain_index_type == "wordset":
+            input_ids_np = input_ids.cpu().numpy()
+
+        for batch_id, (batch_beam_tokens, batch_beam_scores, batch_beam_indices) in enumerate(zip(beam_tokens, beam_scores, beam_indices)):
             beam_idx = 0
+            global_batch_id = self.global_batch_idx(batch_id)
+
+            # we need to mix slicing out by beam_index and updating
+            # so just override the content of batch_idx 
+            if self.constrain_index_type == "wordset":
+                prev_words_this_batch = [None for _ in range(self.num_beams)]
+                prev_text_indices_this_batch = [None for _ in range(self.num_beams)]
+
             for beam_rank, (beam_token, beam_score, beam_index) in enumerate(zip(batch_beam_tokens, batch_beam_scores, batch_beam_indices)):
-                if torch.isinf(beam_score) and beam_rank < self.num_beams:
+                if torch.isinf(beam_score):
                     # when there is -inf within the top num_beams, the batch should be done
-                    self.batch_filter[batch_idx] = False
+                    if beam_rank == 0:
+                        self.batch_filter[batch_id] = False
                     break
 
-                batch_beam_idx = batch_idx * self.prev_num_beams + beam_index
+                batch_beam_idx = batch_id * self.prev_num_beams + beam_index
+
+                # when next token is separator, update prev_text_indices and prev_words
+                # if prev_text_indices is 1, just add to beams
+                if self.constrain_index_type == "wordset":
+                    preceed = True
+                    # by default we just slice out the beam_index result
+                    prev_words = self.prev_words[global_batch_id][beam_index]
+                    prev_text_indices = self.prev_text_indices[global_batch_id][beam_index]
+                    
+                    if beam_token == constrain_index.sep_token_id:
+                        # manually add eos_token_id because sometimes 
+                        tokens = np.concatenate([input_ids_np[batch_beam_idx], np.array([constrain_index.sep_token_id], dtype=np.int32)], axis=-1)
+                        word = constrain_index.get_word(tokens)
+
+                        if prev_words is not None:
+                            prev_words = np.concatenate([prev_words, np.array([word], dtype=np.int32)], axis=-1)
+                        else:
+                            # in case this is the first generated word
+                            prev_words = np.array([word], dtype=np.int32)
+                        
+                        # update text indices corresponding to generated words
+                        prev_text_indices = constrain_index.get_text(word, prev_text_indices)
+                        
+                        # when there is only one document containing the generated words, add to beam
+                        if len(prev_text_indices) == 1:
+                            self._add_beam(
+                                batch_idx=global_batch_id,
+                                hypothesis=None,
+                                score=beam_score.item(),
+                                text_idx=prev_text_indices,
+                                word_set=prev_words,
+                            )
+                            preceed = False
+
+                    if preceed:
+                        prev_words_this_batch[beam_idx] = prev_words
+                        prev_text_indices_this_batch[beam_idx] = prev_text_indices
+
+                        # otherwise, when the generated words correspond to many documents or the word is not finished, continue
+                        next_beam_tokens[batch_id, beam_idx] = beam_token
+                        next_beam_scores[batch_id, beam_idx] = beam_score
+                        next_beam_indices[batch_id, beam_idx] = beam_index
+                        beam_idx += 1
+
                 # when next token is eos, add to beam
                 # when cur_new_tokens has reached the limits, add to beam regardless of eos token
-                if beam_token == self.eos_token_id or self.cur_new_tokens == max_new_tokens - 1:
-                    # <eos> is only meaningful when being decoded within the top num_beams
-                    if beam_rank < self.num_beams:
-                        # never include a non-valid sequence in beams
-                        if beam_score != -float("inf"):
-                            if self.rank_type == "eos":
-                                # select pask_key_values based on beam_index
-                                filtered_past = ()
-                                for layer_past_key_values in past_key_values:
-                                    filtered_layer_past_key_values = ()
-                                    for layer_past_key_value in layer_past_key_values:
-                                        filtered_layer_past_key_values += (layer_past_key_value[batch_beam_idx].unsqueeze(0),)
-                                    filtered_past += (filtered_layer_past_key_values,)
-                                # slice attention_mask and encoder_outputs in model_kwargs
-                                new_model_kwargs = {"past_key_values": filtered_past}
-                                for k, v in model_kwargs.items():
-                                    if k == "past":
-                                        continue
-                                    elif k == "encoder_outputs":
-                                        new_model_kwargs[k] = type(v)({"last_hidden_state": v.last_hidden_state[batch_beam_idx].unsqueeze(0)})
-                                    elif isinstance(v, torch.Tensor):
-                                        new_model_kwargs[k] = v[batch_beam_idx].unsqueeze(0)
-                                    else:
-                                        new_model_kwargs[k] = v
+                elif self.constrain_index_type == "trie":
+                    if beam_token == self.eos_token_id or self.cur_new_tokens == max_new_tokens - 1:
+                        # <eos> is only meaningful when being decoded within the top num_beams
+                        if beam_rank < self.num_beams:
+                            # never include a non-valid sequence in beams
+                            if beam_score != -float("inf"):
+                                if self.rank_type == "eos":
+                                    # select pask_key_values based on beam_index
+                                    filtered_past = ()
+                                    for layer_past_key_values in past_key_values:
+                                        filtered_layer_past_key_values = ()
+                                        for layer_past_key_value in layer_past_key_values:
+                                            filtered_layer_past_key_values += (layer_past_key_value[batch_beam_idx].unsqueeze(0),)
+                                        filtered_past += (filtered_layer_past_key_values,)
+                                    # slice attention_mask and encoder_outputs in model_kwargs
+                                    new_model_kwargs = {"past_key_values": filtered_past}
+                                    for k, v in model_kwargs.items():
+                                        if k == "past":
+                                            continue
+                                        elif k == "encoder_outputs":
+                                            new_model_kwargs[k] = type(v)({"last_hidden_state": v.last_hidden_state[batch_beam_idx].unsqueeze(0)})
+                                        elif isinstance(v, torch.Tensor):
+                                            new_model_kwargs[k] = v[batch_beam_idx].unsqueeze(0)
+                                        else:
+                                            new_model_kwargs[k] = v
+                                    
+                                    outputs = model(decoder_input_ids=beam_token.view(1,1), **new_model_kwargs)
+                                    eos_hidden_states = outputs.decoder_hidden_states[-1][:, -1].squeeze(0) # 768
                                 
-                                outputs = model(decoder_input_ids=beam_token.view(1,1), **new_model_kwargs)
-                                eos_hidden_states = outputs.decoder_hidden_states[-1][:, -1].squeeze(0) # 768
-                            
-                            else:
-                                eos_hidden_states = None
+                                else:
+                                    eos_hidden_states = None
 
-                            self._add_beam(self.global_batch_idx(batch_idx), input_ids[batch_beam_idx].tolist(), beam_score.item(), eos_hidden_state=eos_hidden_states)
+                                self._add_beam(
+                                    batch_idx=global_batch_id, 
+                                    hypothesis=input_ids[batch_beam_idx].tolist(),
+                                    score=beam_score.item(),
+                                    eos_hidden_state=eos_hidden_states
+                                )
+
+                    else:
+                        next_beam_tokens[batch_id, beam_idx] = beam_token
+                        next_beam_scores[batch_id, beam_idx] = beam_score
+                        next_beam_indices[batch_id, beam_idx] = beam_index
+                        beam_idx += 1
 
                 else:
-                    next_beam_tokens[batch_idx, beam_idx] = beam_token
-                    next_beam_scores[batch_idx, beam_idx] = beam_score
-                    next_beam_indices[batch_idx, beam_idx] = beam_index
-                    beam_idx += 1
-
+                    raise NotImplementedError(f"Constrain index type {constrain_index} not implemented yet!")
                 # jump out when beam_idx reaches the limit
                 if beam_idx == self.num_beams:
                     break
+            
+            if beam_idx < self.num_beams:
+                next_beam_scores[batch_id, beam_idx:] = -float("inf")
+            
+            if self.constrain_index_type == "wordset":
+                self.prev_words[global_batch_id] = prev_words_this_batch
+                self.prev_text_indices[global_batch_id] = prev_text_indices_this_batch
 
         # used to slice input_ids and model_kwargs
         batch_beam_indices = (next_beam_indices.view(self.batch_size, -1) + self.beam_idx_bias[:self.batch_size] * self.prev_num_beams).view(-1)
@@ -1855,21 +1970,12 @@ class BeamManager():
             reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
         model_kwargs["past"] = reordered_decoder_past
 
-        # cut off beams
-        # encoder related model_kwargs are invariant to beams, so we just do expansion or slice
+        # cut off beams for shrinking beam sizes
         for k, v in model_kwargs.items():
             if k == "encoder_outputs":
                 model_kwargs[k]["last_hidden_state"] = self._slice_inputs_by_beams(v["last_hidden_state"])
             elif isinstance(v, torch.Tensor):
                 model_kwargs[k] = self._slice_inputs_by_beams(v)
-
-        # update prev_text_indices to match the used beams
-        if self.constrain_index_type == "intersect" and self.cur_new_tokens > 1:
-            for i, beam_idx in enumerate(next_beam_indices):
-                batch_idx = self.batch_indices[i]
-                prev_text_indices = self.prev_text_indices[batch_idx]
-                # reorder to match the selected beams
-                self.prev_text_indices[batch_idx] = [prev_text_indices[j] for j in beam_idx]
 
         return next_beam_scores.view(-1), input_ids, model_kwargs
 
@@ -1891,7 +1997,7 @@ class BeamManager():
                     if len(candidates) <= threshold:
                         # this batch is finished
                         self.batch_filter[i] = False
-                        batch_idx = self.global_batch_idx(i)
+                        global_batch_id = self.global_batch_idx(i)
                         # next we will modify the contents in candidates
                         # backup for later saving
                         candidates_tensor = candidates.copy()
@@ -1931,14 +2037,13 @@ class BeamManager():
                                 beam += (eos_hidden_states[j],)
                             else:
                                 beam += (None,)
-                            self.beams[batch_idx].append(beam)
+                            self.beams[global_batch_id].append(beam)
 
             else:
                 raise NotImplementedError("IntersectIndex with threshold is not implemented yet!")
 
-
     @torch.no_grad()
-    def search(self, model:T5ForConditionalGeneration, nbeam, threshold, trsd_start_len, max_new_tokens, constrain_index:Union[TrieIndex,IntersectIndex], rank_type="prob", **inputs):
+    def search(self, model:T5ForConditionalGeneration, nbeam, threshold, trsd_start_len, max_new_tokens, constrain_index:Union[TrieIndex,WordSetIndex], rank_type="prob", **inputs):
         """
         Perform beam search with constrain from trie_index or intersect_index. Note that the code to be decoded should be of same length.
         """
@@ -2007,14 +2112,25 @@ class BeamManager():
                 for batch_id, beam_sent in enumerate(input_ids.view(self.batch_size, self.prev_num_beams, -1)):
                     for beam_id, sent in enumerate(beam_sent):
                         mask[batch_id * self.prev_num_beams + beam_id, constrain_index.get_valid_tokens(sent.tolist())] = 0
-            elif self.constrain_index_type == "intersect":
+            elif self.constrain_index_type == "wordset":
                 for batch_id, beam_tokens in enumerate(input_ids.view(self.batch_size, self.prev_num_beams, -1).cpu().numpy()):
                     prev_text_indices = self.prev_text_indices[self.global_batch_idx(batch_id)] # prev_num_beams, *
+                    prev_words = self.prev_words[self.global_batch_idx(batch_id)] # prev_num_beams
                     for beam_id, tokens in enumerate(beam_tokens):
-                        # find previously generated tokens
-                        # at the first decoding step, there are no prev_text_indices because all documents are available
-                        valid_tokens = constrain_index.get_valid_tokens(prev_text_indices[beam_id] if len(prev_text_indices) else None, prefix=tokens)
-                        mask[batch_id * self.prev_num_beams + beam_id, valid_tokens] = 0
+                        beam_score = beam_scores[batch_id * self.prev_num_beams + beam_id]
+                        # wordsetindex cannot return an empty list for an invalid token sequence
+                        # we manually skip to check valid tokens when beam score is -inf
+                        if torch.isnan(beam_score):
+                            # do not get_valid_tokens for nonsence beam
+                            valid_tokens = []                        
+                        else:
+                            # find previously generated tokens
+                            # at the first decoding step, there are no prev_text_indices because all documents are available                        
+                            valid_tokens = constrain_index.get_valid_tokens(prev_text_indices[beam_id], prev_words[beam_id], prefix=tokens)
+                            mask[batch_id * self.prev_num_beams + beam_id, valid_tokens] = 0
+                            # every time a word is finished, make the model possible to generate eos to terminate
+                            # if tokens[-1] == constrain_index.sep_token_id:
+                            #     mask[batch_id * self.prev_num_beams + beam_id, self.eos_token_id] = 0
                 if self.cur_new_tokens < max_new_tokens - 1:
                     # can only generate eos_token at the last position
                     mask[:, eos_token_id] = -float("inf")
@@ -2032,11 +2148,14 @@ class BeamManager():
             next_beam_indices = torch.div(next_beam_tokens, vocab_size, rounding_mode="floor")
             next_beam_tokens = next_beam_tokens % vocab_size
 
-            # print(input_ids, next_beam_tokens, next_beam_scores)
-            # input()
-
             # 5. update beam hypotheses if eos is decoded
-            beam_scores, input_ids, model_kwargs = self.update_beams(next_beam_tokens, next_beam_scores, next_beam_indices, input_ids, model, model_kwargs, outputs.past_key_values, max_new_tokens)
+            beam_scores, input_ids, model_kwargs = self.update_beams(next_beam_tokens, next_beam_scores, next_beam_indices, input_ids, model, model_kwargs, outputs.past_key_values, max_new_tokens, constrain_index)
+
+            # print(self.prev_text_indices)
+            # print(input_ids)
+            # print(self.prev_words)
+            # print(self.beams)
+            # input()
 
             # 6. handle the finished batches according to the threshold
             self.handle_threshold(input_ids, beam_scores, model, model_kwargs, threshold, trsd_start_len, constrain_index)
@@ -2045,6 +2164,7 @@ class BeamManager():
             input_ids, beam_scores, model_kwargs = self.update_parameters_by_batch(input_ids, beam_scores, model_kwargs)
         
         self._finalize()
+
 
 
 class FlatVerifier(BasePostVerifier):
@@ -2090,6 +2210,7 @@ class FlatVerifier(BasePostVerifier):
             topk_tindices = tindices[topk_idx.tolist()]
 
         return topk_tindices, topk_score
+
 
 
 class PQVerifier(BasePostVerifier):
@@ -2231,6 +2352,12 @@ def build_inverted_lists(args):
                 token_set.add(token_id)
 
     return text_idx_inverted_lists, token_idx_inverted_lists
+
+
+def build_inverted_lists_words(args):
+    token_ids, start_text_idx, token_num, stop_token_ids, sep_token_ids = args
+
+
 
 
 def subword_to_word_bert(x):
@@ -2427,7 +2554,7 @@ VERIFIER_MAP = {
 
 GENERATIVE_INDEX_MAP = {
     "trie": TrieIndex,
-    "intersect": IntersectIndex,
+    "wordset": WordSetIndex,
 }
 
 SUBWORD_TO_WORD_FN = {

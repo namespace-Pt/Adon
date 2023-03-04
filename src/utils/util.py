@@ -418,7 +418,6 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
         mode="r+",
         dtype=np.int32
     )
-    eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
 
     with open(input_path, 'r') as f:
         pbar = tqdm(total=end_idx-start_idx, desc="Tokenizing", ncols=100, leave=False)
@@ -431,9 +430,7 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
             title = line.strip().split('\t')[1]
             # there is always a leading 0
             # - 2 because the leading 0 and the trailing eos_token_id
-            output = tokenizer.encode(title, max_length=max_length - 2, padding=False, truncation=True, add_special_tokens=False)
-            output.append(eos_token_id)
-
+            output = tokenizer.encode(title, max_length=max_length-1, padding=False, truncation=True)
             token_ids[idx, 1: 1 + len(output)] = output
 
             pbar.update(1)
@@ -448,7 +445,7 @@ def isnumber(x):
         return False
 
 
-def _get_token_code_for_misaligned_tokenizer(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, order:str, stop_words:set):
+def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, order:str, stop_words:set, separator:str=" "):
     """
     Generate code based on json files produced by :func:`models.BaseModel.BaseModel.anserini_index`.
     First reorder the words by ``order``, and tokenize the word sequence by ``tokenizer``.
@@ -464,16 +461,19 @@ def _get_token_code_for_misaligned_tokenizer(input_path:str, output_path:str, al
         max_length: the maximum length of tokens
         order: the word order {weight, lexical, orginal}
         stop_words: some words to exclude
+        separator: used to separate words from words
     """
+    unk_token_id = tokenizer.unk_token_id
+
     codes = np.memmap(
         output_path,
         mode="r+",
         dtype=np.int32
     ).reshape(all_line_count, max_length)
-    eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id else tokenizer.sep_token_id
-    pad_token_id = tokenizer.pad_token_id
 
-    k = max_length - 2
+    if separator != " ":
+        assert tokenizer.convert_tokens_to_ids(separator) != unk_token_id
+        separator += " "
 
     with open(input_path, 'r') as f:
         pbar = tqdm(total=end_idx-start_idx, desc="Tokenizing", ncols=100, leave=False)
@@ -501,91 +501,35 @@ def _get_token_code_for_misaligned_tokenizer(input_path:str, output_path:str, al
                 word_score_pairs = filtered_word_score_pairs
 
             if order == "weight":
-                sorted_word = [word for word, score in sorted(word_score_pairs.items(), key=lambda x: x[1], reverse=True)[:k]]
-            elif order == "original":
-                # get the k largest token score
-                sorted_score = sorted(word_score_pairs.values(), reverse=True)
-                threshold_score = sorted_score[k - 1] if k <= len(sorted_score) else sorted_score[-1]
-                sorted_word = [word for word, score in word_score_pairs.items() if score >= threshold_score]
-            elif order == "lexical":
-                sorted_score = sorted(word_score_pairs.values(), reverse=True)
-                threshold_score = sorted_score[k - 1] if k <= len(sorted_score) else sorted_score[-1]
-                sorted_word = sorted([word for word, score in word_score_pairs.items() if score >= threshold_score])
+                # NOTE: remove any word consisting of unk_token_id
+                sorted_word = [word for word, score in sorted(word_score_pairs.items(), key=lambda x: x[1], reverse=True) if unk_token_id not in tokenizer.encode(word)]
+
+            # TODO: random order among the top K keywords
+            # elif order == "lexical":
+            #     sorted_score = sorted(word_score_pairs.values(), reverse=True)
+            #     threshold_score = sorted_score[k - 1] if k <= len(sorted_score) else sorted_score[-1]
+            #     sorted_word = sorted([word for word, score in word_score_pairs.items() if score >= threshold_score])
             else:
                 raise NotImplementedError
 
-            # - 2 because the leading 0 and the trailing eos_token_id
-            # force to pad to max_length - 2
-            output = tokenizer.encode(" ".join(sorted_word), max_length=max_length - 2, padding=False, truncation=True, add_special_tokens=False)
-            if len(output) < max_length - 2:
-                output.extend([pad_token_id for _ in range(max_length - 2 - len(output))])
-            output.append(eos_token_id)
+            # append the separator at the end of each word
+            word_with_sep = [w + separator for w in sorted_word]
+            # add separator at the end to make sure all words are of same pattern
+            # minus 1 because there is always a leading 0
+            output = tokenizer.encode("".join(word_with_sep), max_length=max_length - 1, padding=False, truncation=True)
 
-            codes[idx, 1:] = output
+            if separator != " ":
+                assert " " in separator
+                decoded = tokenizer.decode(output, skip_special_tokens=True)
+                sep = separator[:-1]
+                sep_pos = decoded.rfind(sep)
+                decoded = decoded[:sep_pos + len(sep)]
+                output = tokenizer.encode(decoded, max_length=max_length-1, padding=False)
+
+            codes[idx, 1: 1+len(output)] = output
 
             pbar.update(1)
         pbar.close()
-
-
-def _get_token_code_for_aligned_tokenizer(output_path:str, token_ids:np.ndarray, token_weights:np.ndarray, all_line_count:int, start_idx:int, tokenizer:Any, max_length:int, order:str, stop_token_ids:set):
-    """
-    Generate code based on cached files in ``data/cache/config.dataset/encode/model_name/text_embeddings.mmp`` produced by :func:`models.BaseModel.BaseSparseModel.encode_text`.
-    First reorder the words by ``order``, and tokenize the word sequence by ``tokenizer``.
-    Add a padding token at the head. Force all codes to be the same length and enclose codes with a sep token.
-
-    Args:
-        output_path: the ``np.memmap`` file path to save the codes
-        token_ids
-        token_weights
-        all_line_count: the total number of records in the collection
-        start_idx: the starting idx
-        end_idx: the ending idx
-        tokenizer(transformers.AutoTokenizer)
-        max_length: the maximum length of tokens
-        order: the word order {weight, lexical, orginal}
-        stop_token_ids: the token ids to exclude
-    """
-    codes = np.memmap(
-        output_path,
-        mode="r+",
-        dtype=np.int32
-    ).reshape(all_line_count, max_length)
-    eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id else tokenizer.sep_token_id
-    pad_token_id = tokenizer.pad_token_id
-
-    k = max_length - 2
-
-    for i, token_id in enumerate(tqdm(token_ids, ncols=100, desc="Collecting Tokens", leave=False)):
-        token_weight = token_weights[i]
-
-        # collect all the unique tokens, maintain its insertion order
-        unique_token_score_pairs = OrderedDict()
-        for j, tok in enumerate(token_id):
-            if tok in stop_token_ids:
-                continue
-            if tok not in unique_token_score_pairs:
-                unique_token_score_pairs[tok] = 1e-5
-            # maintain the max score of each unique token
-            unique_token_score_pairs[tok] = max(token_weight[j], unique_token_score_pairs[tok])
-
-        if order == "weight":
-            sorted_token = [tok for tok, score in sorted(unique_token_score_pairs.items(), key=lambda x: x[1], reverse=True)[:k]]
-        elif order == "original":
-            # get the k largest token score
-            threshold_score = sorted(unique_token_score_pairs.values(), reverse=True)[k - 1]
-            sorted_token = [tok for tok, score in unique_token_score_pairs.items() if score >= threshold_score]
-        elif order == "lexical":
-            threshold_score = sorted(unique_token_score_pairs.values(), reverse=True)[k - 1]
-            sorted_token = sorted([tok for tok, score in unique_token_score_pairs.items() if score >= threshold_score])
-        else:
-            raise NotImplementedError
-
-        if len(sorted_token) < max_length - 2:
-            sorted_token.extend([pad_token_id for _ in range(max_length - 2 - len(sorted_token))])
-
-        sorted_token.append(eos_token_id)
-        # the sorted token must be length of k
-        codes[start_idx + i, 1:] = sorted_token
 
 
 

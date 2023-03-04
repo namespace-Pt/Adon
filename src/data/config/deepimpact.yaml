@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: impact-tok
+  - index: impact-word
   - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten

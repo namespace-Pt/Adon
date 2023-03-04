@@ -1,0 +1,12 @@
+defaults:
+  - _default
+  - _self_
+
+index_type: wordset
+index_thread: 10
+index_shard: 32
+
+load_index: true
+save_index: true
+
+code_sep: ","

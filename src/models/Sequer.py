@@ -1,15 +1,9 @@
 import os
-import time
 import torch
 import numpy as np
 import torch.nn.functional as F
-from tqdm import tqdm
-from collections import defaultdict
 from transformers import T5ForConditionalGeneration
-from transformers.modeling_outputs import BaseModelOutput
 from .BaseModel import BaseGenerativeModel
-from utils.util import synchronize
-from utils.index import BeamManager
 
 
 
@@ -140,94 +134,3 @@ class Sequer(BaseGenerativeModel):
         score = self.scorer(eos_embedding).squeeze(-1)
         return score
 
-
-    @synchronize
-    @torch.no_grad()
-    def retrieve(self, loaders):
-        # Use the <eos> token's score as the sequences_score
-        index = self.index(loaders).index
-        loader_query = loaders["query"]
-
-        retrieval_result = {}
-        self.logger.info("searching...")
-
-        start_idx = end_idx = 0
-        # in case the query is parallel
-        query_start_idx = loader_query.sampler.start
-
-        if self.config.save_encode:
-            if self.config.beam_trsd == 0:
-                N = min(self.config.hits, self.config.nbeam)
-            else:
-                N = self.config.beam_trsd
-            query_codes = np.full((len(loader_query.sampler), N, self.config.code_length), -1, dtype=np.int32)
-
-        beam_manager = BeamManager()
-
-        for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
-            query = self._move_to_device(x["query"])
-            encoder_outputs = self.plm.encoder(**query)
-            B = query["input_ids"].shape[0]
-            end_idx = start_idx + B
-
-            beam_manager.search(
-                model=self.plm, 
-                nbeam=self.config.nbeam, 
-                threshold=self.config.beam_trsd, 
-                trsd_start_len=self.config.trsd_start_len, 
-                max_new_tokens=self.config.code_length - 1, 
-                constrain_index=index,
-                rank_type=self.config.rank_type,
-                **query, 
-                encoder_outputs=encoder_outputs
-            )
-            beams = beam_manager.beams
-            eos_hidden_states = beam_manager.eos_hidden_states
-
-            # ranking by score
-            if self.config.rank_type == "eos":
-                if isinstance(eos_hidden_states[0], torch.Tensor):
-                    eos_hidden_states = torch.cat(eos_hidden_states, dim=0)
-                elif isinstance(eos_hidden_states[0], list):
-                    eos_hidden_states = torch.stack(sum(eos_hidden_states, []), dim=0)
-                scores = self.scorer(eos_hidden_states).squeeze(-1).tolist() # B * trsd
-            elif self.config.rank_type == "prob":            
-                # ranking by generation prob
-                scores = sum(beam_manager.seq_scores, [])
-            else:
-                raise NotImplementedError(f"Ranking type {self.config.ranking_type} is not implemented yet!")
-
-            if self.config.save_encode:
-                for batch_beam in beams:
-                    query_codes[start_idx: end_idx, :len(batch_beam)] = batch_beam
-
-            offset = 0
-            for j, batch in enumerate(beams):
-                res = defaultdict(list)
-                for k, c in enumerate(batch):
-                    if beam_manager.constrain_index_type == "trie":
-                        ids = index[c]
-                    elif beam_manager.constrain_index_type == "intersect":
-                        # need to provide prev_text_indices
-                        ids = index[c, beam_manager.prev_text_indices[j][k]]
-                    for id in ids:
-                        res[id].append(scores[offset + k])
-                offset += len(batch)
-                retrieval_result[j + start_idx + query_start_idx] = [(k, max(v)) for k, v in res.items()]
-
-            start_idx = end_idx
-            if self.config.debug:
-                if i > 2:
-                    break
-        
-        if self.config.save_encode:
-            self.save_to_mmp(
-                os.path.join(self.retrieve_dir, "query_codes.mmp"),
-                shape=(len(loader_query.dataset), *query_codes.shape[1:]),
-                dtype=query_codes.dtype,
-                loader=loader_query,
-                obj=query_codes
-            )
-
-
-        return retrieval_result

@@ -84,7 +84,7 @@ class TextDataset(BaseDataset):
         assert isinstance(token_id, list)
         if self.config.get("text_prefix"):
             token_id = self.tokenizer.encode(self.config.text_prefix, add_special_tokens=False) + token_id
-        outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True, return_token_type_ids=False)
+        outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True)
         return outputs
     
     def _tokenize(self, inputs, max_length):
@@ -94,7 +94,7 @@ class TextDataset(BaseDataset):
             elif isinstance(inputs, list):
                 for i, x in enumerate(inputs):
                     inputs[i] = self.config.text_prefix + x
-        return self.tokenizer(inputs, padding="max_length", max_length=max_length, truncation=True, return_token_type_ids=False)
+        return self.tokenizer(inputs, padding="max_length", max_length=max_length, truncation=True)
 
     def __getitem__(self, index:Union[int,np.ndarray,list]) -> dict:
         """
@@ -223,7 +223,7 @@ class QueryDataset(BaseDataset):
         assert isinstance(token_id, list)
         if self.config.get("query_prefix"):
             token_id = self.tokenizer.encode(self.config.query_prefix, add_special_tokens=False) + token_id
-        outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True, return_token_type_ids=False)
+        outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True)
         return outputs
 
     def _tokenize(self, inputs, max_length):
@@ -233,7 +233,7 @@ class QueryDataset(BaseDataset):
             elif isinstance(inputs, list):
                 for i, x in enumerate(inputs):
                     inputs[i] = self.config.text_prefix + x
-        return self.tokenizer(inputs, padding="max_length", max_length=max_length, truncation=True, return_token_type_ids=False)
+        return self.tokenizer(inputs, padding="max_length", max_length=max_length, truncation=True)
 
     def __getitem__(self, index:int):
         """
@@ -431,8 +431,8 @@ class PairDataset(BaseDataset):
         labels = []
         for i, query_dataset in enumerate(query_datasets):
             query_set = query_dataset.query_set
-            if os.path.exists(os.path.join(self.cache_dir, query_set, f"candidates_{config.candidate_type}.pkl")):
-                candidate_path = os.path.join(self.cache_dir, query_set, f"candidates_{config.candidate_type}.pkl")
+            if os.path.exists(os.path.join(self.cache_dir, "query", query_set, f"candidates_{config.candidate_type}.pkl")):
+                candidate_path = os.path.join(self.cache_dir, "query", query_set, f"candidates_{config.candidate_type}.pkl")
                 qrel, label = self.init_pair(i, candidate_path)
             elif os.path.exists(os.path.join(config.cache_root, "retrieve", config.candidate_type, query_set, "retrieval_result.pkl")):
                 candidate_path = os.path.join(config.cache_root, "retrieve", config.candidate_type, query_set, "retrieval_result.pkl")
@@ -493,7 +493,7 @@ class PairDataset(BaseDataset):
         query_outputs = self.query_datasets[query_set_idx][query_idx]
 
         return_dict = {
-            "label": label,
+            "label": float(label),
             **text_outputs,
             **query_outputs
         }
@@ -536,7 +536,7 @@ class RawTripleTrainDataset(IterableDataset):
 
 
     def tokenize(self, input, max_length):
-        return self.tokenizer(input, padding="max_length", max_length=max_length, truncation=True, return_token_type_ids=False)
+        return self.tokenizer(input, padding="max_length", max_length=max_length, truncation=True)
 
 
     def __iter__(self):

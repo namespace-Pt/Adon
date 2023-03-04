@@ -22,9 +22,6 @@ model:
   nbeam: 10
   return_code: True
 
-index:
-  index_type: trie
-
 train:
   # only query-pos pair
   hard_neg_type: none
@@ -34,6 +31,8 @@ train:
   scheduler: linear
   batch_size: 100
   eval_delay: 20e
+
+  main_metric: MRR@10
 
 eval:
   parallel: query

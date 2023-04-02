@@ -7,9 +7,9 @@ code_length: 0
 # the extra size of the code
 code_size: 0
 # return pre-defined code for generative models
-return_code: False
+return_code: false
 
 # concate query and text as sentence pair
-return_pair: False
+return_pair: false
 # return prefix overlapping mask when return code
-return_prefix_mask: False
+return_prefix_mask: false

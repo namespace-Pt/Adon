@@ -7,6 +7,6 @@ text_gate_k: 0
 query_gate_k: 0
 
 # return attention mask for the eos/sep token
-return_sep_mask: False
+return_sep_mask: false
 # return the attention mask for the first occurance of a token in a piece of text
-return_first_mask: True
+return_first_mask: true

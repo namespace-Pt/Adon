@@ -14,7 +14,7 @@ base:
 
 model:
   model_type: deepimpact
-  return_sep_mask: True
+  return_sep_mask: true
 
 train:
   hard_neg_num: 7

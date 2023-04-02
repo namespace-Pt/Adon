@@ -118,6 +118,7 @@ def tokenize_to_memmap(input_path:str, cache_dir:str, num_rec:int, max_length:in
     arguments = []
 
     memmap_path = os.path.join(cache_dir_with_plm, "token_ids.mmp")
+    # remove old memmap file
     if os.path.exists(memmap_path):
         os.remove(memmap_path)
 

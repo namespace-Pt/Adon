@@ -3,10 +3,11 @@ import torch
 from .BaseModel import BaseModel
 
 from .AR2 import AR2
+from .BOW import BOW, BOWR
 from .BM25 import BM25
 from .COIL import COIL
 from .ColBERT import ColBERT
-from .DSI import DSI
+from .DSI import DSI, GENRE
 from .DeepImpact import DeepImpact
 from .DPR import DPR
 from .IVF import IVF, TopIVF, TokIVF
@@ -22,6 +23,8 @@ from .VQ import DistillVQ
 MODEL_MAP = {
     "ar2": AR2,
     "bm25": BM25,
+    "bow": BOW,
+    "bowr": BOWR,
     "coil": COIL,
     "colbert": ColBERT,
     "crossenc": CrossEncoder,
@@ -29,6 +32,7 @@ MODEL_MAP = {
     "distillvq": DistillVQ,
     "dpr": DPR,
     "dsi": DSI,
+    "genre": GENRE,
     "ivf": IVF,
     "rankt5": RankT5,
     "seq2seq": Sequer,

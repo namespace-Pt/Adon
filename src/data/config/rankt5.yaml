@@ -23,6 +23,3 @@ train:
   batch_size: 16
   learning_rate: 1e-4
   hard_neg_num: 7
-
-eval:
-  loader_rerank: raw

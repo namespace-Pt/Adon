@@ -8,8 +8,8 @@ eval_metric_cutoff: [1,5,10,100,1000]
 # the cutoff for retrieval result
 hits: 1000
 
-eval_flops: False
-eval_posting_length: False
+eval_flops: false
+eval_posting_length: false
 
 # the post verifier
 verifier_type: none
@@ -19,3 +19,5 @@ verifier_src: none
 verifier_index: none
 # the final hits
 verifier_hits: 1000
+
+save_res: retrieval_result

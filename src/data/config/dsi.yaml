@@ -20,17 +20,17 @@ model:
   code_size: 100
 
   nbeam: 10
-  return_code: True
+  return_code: true
 
 train:
   # only query-pos pair
   hard_neg_type: none
-  epoch: 50
+  epoch: 80
 
   learning_rate: 1e-3
   scheduler: linear
   batch_size: 100
-  eval_delay: 20e
+  eval_delay: 40e
 
   main_metric: MRR@10
 

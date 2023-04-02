@@ -4,7 +4,7 @@ defaults:
 
 index_type: bm25
 
-load_collection: False
+load_collection: false
 language: eng
 
 # k1 and b used in bm25

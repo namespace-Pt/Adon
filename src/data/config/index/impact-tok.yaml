@@ -4,7 +4,7 @@ defaults:
 
 index_type: impact-tok
 
-load_collection: False
+load_collection: false
 quantize_bit: 8
 language: eng
 

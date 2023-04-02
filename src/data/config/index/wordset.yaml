@@ -10,3 +10,4 @@ load_index: true
 save_index: true
 
 code_sep: ","
+dedup_beam: false

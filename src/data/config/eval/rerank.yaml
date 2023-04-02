@@ -21,3 +21,5 @@ candidate_type: BM25
 candidate_num: 1000
 
 parallel: query
+
+save_res: retrieval_result

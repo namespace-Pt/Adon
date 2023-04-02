@@ -14,11 +14,16 @@ base:
 
 model:
   model_type: unicoil
-  return_sep_mask: True
+  return_sep_mask: true
+
+index:
+  load_index: true
+  # always save the created index
+  save_index: true
 
 train:
   hard_neg_num: 7
 
 eval:
-  eval_posting_length: True
-  eval_flops: True
+  eval_posting_length: true
+  eval_flops: true

@@ -27,7 +27,6 @@ if __name__ == "__main__":
     for query_set in config.query_set:
         positives = load_pickle(f"{config.cache_root}/dataset/query/{query_set}/positives.pkl")
 
-        save_name = config.hard_neg_type
         retrieval_result = load_pickle(f"{config.cache_root}/retrieve/{config.hard_neg_type}/{query_set}/retrieval_result.pkl")
         hard_negatives = defaultdict(list)
         for k,v in tqdm(retrieval_result.items(), desc="Collecting Negatives", ncols=100):
@@ -41,6 +40,8 @@ if __name__ == "__main__":
 
         if config.save_name != "default":
             save_name = config.save_name
+        else:
+            save_name = config.hard_neg_type
         save_path = f"{config.cache_root}/dataset/query/{query_set}/negatives_{save_name}.pkl"
         save_pickle(dict(hard_negatives), save_path)
         print(f"saved negatives at {save_path}")

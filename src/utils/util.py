@@ -17,6 +17,12 @@ from transformers import AutoModel, AutoTokenizer
 from .typings import *
 
 
+def mean_len(i:Iterable):
+    return sum([len(x) for x in i]) / len(i)
+
+def mean(i:Iterable):
+    return sum(i) / len(i)
+
 
 def load_pickle(path:str):
     """
@@ -396,7 +402,7 @@ def compute_metrics_nq(retrieval_result:RETRIEVAL_MAPPING, query_answer_path:str
     return validate(retrieval_result, answers, collection, num_workers=8, batch_size=8)
 
 
-def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int):
+def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, separator:str=" "):
     """
     Generate code based on titles of the NQ dataset. Add a padding token at the head.
 
@@ -412,12 +418,18 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
     Returns:
         the populated memmap file
     """
+    eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
+    
     token_ids = np.memmap(
         output_path,
         shape=(all_line_count, max_length),
         mode="r+",
         dtype=np.int32
     )
+    if separator != " ":
+        separator_token_id = tokenizer.convert_tokens_to_ids(separator)
+        assert separator_token_id != tokenizer.unk_token_id
+        separator += " "
 
     with open(input_path, 'r') as f:
         pbar = tqdm(total=end_idx-start_idx, desc="Tokenizing", ncols=100, leave=False)
@@ -426,11 +438,56 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
                 continue
             if idx >= end_idx:
                 break
+            
+            fields = [x.strip() for x in line.split("\t")[1:]]
+            title = fields[0]
+            if len(title) == 0:
+                title = " ".join(fields[1].split(" ")[:5])
 
-            title = line.strip().split('\t')[1]
-            # there is always a leading 0
-            # - 2 because the leading 0 and the trailing eos_token_id
-            output = tokenizer.encode(title, max_length=max_length-1, padding=False, truncation=True)
+            # separator itself cannot be included in the code
+            if separator != " ":
+                title = title.replace(separator[0], "")
+
+            # neglect unk_token and extra spaces
+            title = tokenizer.decode(tokenizer.encode(title, add_special_tokens=False), skip_special_tokens=True).strip()
+            
+            # some title only contains one word and will be tokenized as unk_token
+            if len(title) == 0:
+                title =  " ".join(fields[1].split(" ")[:5])
+                # separator itself cannot be included in the code
+                if separator != " ":
+                    title = title.replace(separator[0], "")
+                # neglect unk_token and extra spaces
+                title = tokenizer.decode(tokenizer.encode(title, add_special_tokens=False), skip_special_tokens=True).strip()
+
+            words = title.split(" ")
+            words = [word + separator for word in words if word not in ["\'\'","``","(",")","-","--","/",":"]]
+            # remove duplicate
+            new_words = []
+            for word in words:
+                if word not in new_words:
+                    new_words.append(words)
+
+            output = tokenizer.encode("".join(words), add_special_tokens=False)
+
+            if len(output) > max_length - 2:
+                if separator == " ":
+                    output = output[:max_length - 2]
+                else:
+                    new_output = []
+                    tmp = []
+                    for o in output:                            
+                        tmp.append(o)
+                        if o == separator_token_id:
+                            if len(new_output) + len(tmp) < max_length - 2:
+                                new_output.extend(tmp.copy())
+                                tmp.clear()
+                            else:
+                                break
+                    output = new_output
+            
+            output += [eos_token_id]
+                    
             token_ids[idx, 1: 1 + len(output)] = output
 
             pbar.update(1)
@@ -445,11 +502,10 @@ def isnumber(x):
         return False
 
 
-def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, order:str, stop_words:set, separator:str=" "):
+def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, order:str, stop_words:set, separator:str=" ", stem=False):
     """
     Generate code based on json files produced by :func:`models.BaseModel.BaseModel.anserini_index`.
     First reorder the words by ``order``, and tokenize the word sequence by ``tokenizer``.
-    Add a padding token at the head. Force all codes to be the same length and enclose codes with a sep token.
 
     Args:
         input_path: the collection file path
@@ -464,6 +520,7 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
         separator: used to separate words from words
     """
     unk_token_id = tokenizer.unk_token_id
+    eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
 
     codes = np.memmap(
         output_path,
@@ -472,8 +529,14 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
     ).reshape(all_line_count, max_length)
 
     if separator != " ":
-        assert tokenizer.convert_tokens_to_ids(separator) != unk_token_id
+        sep_id = tokenizer.convert_tokens_to_ids(separator)
+        assert sep_id != unk_token_id
         separator += " "
+    
+    if stem:
+        from pyserini.analysis import Analyzer, get_lucene_analyzer
+        # Default analyzer for English uses the Porter stemmer:
+        analyzer = Analyzer(get_lucene_analyzer())
 
     with open(input_path, 'r') as f:
         pbar = tqdm(total=end_idx-start_idx, desc="Tokenizing", ncols=100, leave=False)
@@ -499,34 +562,123 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                     else:
                         filtered_word_score_pairs[word] = score
                 word_score_pairs = filtered_word_score_pairs
+            
+            if stem:
+                filtered_word_score_pairs = {}
+                for word, score in word_score_pairs.items():
+                    # some unicode character produces empty analyzer results
+                    try:
+                        stemmed_word = analyzer.analyze(word)[0]
+                    except:
+                        continue
+                    
+                    if stemmed_word in filtered_word_score_pairs:
+                        # pick the maximum score
+                        filtered_word_score_pairs[stemmed_word] = (word, max(score, filtered_word_score_pairs[stemmed_word][1]))
+                    else:
+                        filtered_word_score_pairs[stemmed_word] = (word, score)
+                word_score_pairs = {v[0]: v[1] for v in filtered_word_score_pairs.values()}
 
-            if order == "weight":
-                # NOTE: remove any word consisting of unk_token_id
-                sorted_word = [word for word, score in sorted(word_score_pairs.items(), key=lambda x: x[1], reverse=True) if unk_token_id not in tokenizer.encode(word)]
+            # NOTE: remove any word consisting of unk_token_id
+            # forbid very long words to take up all code length
+            length = 0
+            output = []
+            for word, score in sorted(word_score_pairs.items(), key=lambda x: x[1], reverse=True):
+                word = word.replace(",", "")
+                encoded = tokenizer.encode(word)
+                if unk_token_id in encoded:
+                    continue
+                encoded = tokenizer.encode(word, add_special_tokens=False)
+                # append sep token id
+                if separator != " ":
+                    encoded += [sep_id]
 
-            # TODO: random order among the top K keywords
-            # elif order == "lexical":
-            #     sorted_score = sorted(word_score_pairs.values(), reverse=True)
-            #     threshold_score = sorted_score[k - 1] if k <= len(sorted_score) else sorted_score[-1]
-            #     sorted_word = sorted([word for word, score in word_score_pairs.items() if score >= threshold_score])
-            else:
-                raise NotImplementedError
+                if 0 < len(encoded) < max_length - 2: 
+                    if length + len(encoded) <= max_length - 2:
+                        output.extend(encoded)
+                        length += len(encoded)
+                    else:
+                        break
 
-            # append the separator at the end of each word
-            word_with_sep = [w + separator for w in sorted_word]
-            # add separator at the end to make sure all words are of same pattern
-            # minus 1 because there is always a leading 0
-            output = tokenizer.encode("".join(word_with_sep), max_length=max_length - 1, padding=False, truncation=True)
+            # TODO: random keyword order
+            # elif order == "rand":
+            #     # there will be at most split words in the final code
+            #     if separator != " ":
+            #         split = int((max_length - 2) / 2)
+            #     else:
+            #         split = max_length - 2
+            #     word_with_sep_head = word_with_sep[:split].copy()
+            #     word_with_sep_tail = word_with_sep[split:]
+            #     random.shuffle(word_with_sep_head)
+            #     word_with_sep = word_with_sep_head + word_with_sep_tail
 
-            if separator != " ":
-                assert " " in separator
-                decoded = tokenizer.decode(output, skip_special_tokens=True)
-                sep = separator[:-1]
-                sep_pos = decoded.rfind(sep)
-                decoded = decoded[:sep_pos + len(sep)]
-                output = tokenizer.encode(decoded, max_length=max_length-1, padding=False)
+            output += [eos_token_id]
 
             codes[idx, 1: 1+len(output)] = output
+
+            pbar.update(1)
+        pbar.close()
+
+
+def _get_chatgpt_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int):
+    """
+    Generate code from chatgpt keywords.
+
+    Args:
+        input_path: the collection file path
+        output_path: the ``np.memmap`` file path to save the codes
+        all_line_count: the total number of records in the collection
+        start_idx: the starting idx
+        end_idx: the ending idx
+        tokenizer(transformers.AutoTokenizer)
+        max_length: the maximum length of tokens
+        order: the word order {weight, lexical, orginal}
+        stop_words: some words to exclude
+        separator: used to separate words from words
+    """
+    unk_token_id = tokenizer.unk_token_id
+
+    codes = np.memmap(
+        output_path,
+        mode="r+",
+        dtype=np.int32
+    ).reshape(all_line_count, max_length)
+
+    separator = ","
+    assert tokenizer.convert_tokens_to_ids(separator) != unk_token_id
+    separator += " "
+
+    with open(input_path, 'r') as f:
+        pbar = tqdm(total=end_idx-start_idx, desc="Tokenizing", ncols=100, leave=False)
+        for i, line in enumerate(f):
+            if i < start_idx:
+                continue
+            elif i >= end_idx:
+                break
+
+            keywords = line.strip()
+            keywords = keywords.split(separator)
+            # forbid very long words to take up all code length
+            # filter out unk_token_id
+            valid_keywords = []
+            for keyword in keywords:
+                token = tokenizer.encode(keyword, add_special_tokens=False)
+                if len(token) < max_length - 2 and unk_token_id not in token:
+                    valid_keywords.append(keyword)
+            keywords = valid_keywords
+
+            keywords = separator.join(keywords)
+            # add separator at the end to make sure all words are of same pattern
+            # minus 1 because there is always a leading 0
+            output = tokenizer.encode(keywords, max_length=max_length - 1, padding=False, truncation=True)
+
+            decoded = tokenizer.decode(output, skip_special_tokens=True)
+            sep = separator[:-1]
+            sep_pos = decoded.rfind(sep)
+            decoded = decoded[:sep_pos + len(sep)]
+            output = tokenizer.encode(decoded, max_length=max_length-1, padding=False)
+
+            codes[i, 1: 1+len(output)] = output
 
             pbar.update(1)
         pbar.close()
@@ -770,16 +922,11 @@ class Config(DotDict):
             self.eval_step = 10
             self.eval_delay = 0
             self.save_ckpt = "debug"
-
+        
         if self.dataset == "LECARD":
-            if self.get("index_type") in ["bm25", "impact-tok", "impact-word"]:
-                self.language = "zh"
             if self.get("eval_metric"):
-                self.eval_metric = "mrr,map,precision,ndcg".split(",")
+                self.eval_metric = "mrr,map,precision,ndcg,recall".split(",")
                 self.eval_metric_cutoff = [5, 10, 20, 30]
-        elif self.dataset == "NQ-open":
-            if self.get("main_metric"):
-                self.main_metric = "Recall@10"
 
     def _set_distributed(self):
         """
@@ -855,6 +1002,10 @@ class Config(DotDict):
             "t5": {
                 "tokenizer": "t5",
                 "load_name": "t5-base"
+            },
+            "t5-large": {
+                "tokenizer": "t5",
+                "load_name": "t5-large"
             },
             "doct5": {
                 "tokenizer": "t5",

@@ -50,12 +50,12 @@ class BaseModel(nn.Module):
 
         # all the following attributes can be generated according to name
         self.retrieve_dir = os.path.join(config.cache_root, config.eval_mode, self.name, config.eval_set)
-        self.retrieval_result_path = os.path.join(self.retrieve_dir, "retrieval_result.pkl")
+        self.retrieval_result_path = os.path.join(self.retrieve_dir, self.config.save_res + ".pkl")
         # refered by transformer trainer
         self.ckpt_dir = os.path.join(config.cache_root, "ckpts", self.name)
-        self.index_dir = os.path.join(config.cache_root, "index", self.name)
-        self.encode_dir = os.path.join(config.cache_root, "encode", self.name)
-        self.query_dir = os.path.join(self.encode_dir, config.eval_set)
+        self.index_dir = os.path.join(config.cache_root, "index", self.name, config.text_type, config.index_type)
+        self.text_dir = os.path.join(config.cache_root, "encode", self.name, "text", config.text_type)
+        self.query_dir = os.path.join(config.cache_root, "encode", self.name, "query", config.eval_set)
 
         self.logger = MasterLogger(self.name)
 
@@ -76,6 +76,9 @@ class BaseModel(nn.Module):
         if hasattr(self.queryEncoder, "pooler"):
             self.queryEncoder.pooler = None
             self.textEncoder.pooler = None
+        
+        # NOTE: set hidden size to be involked when using deepspeed
+        self.config.hidden_size = self.textEncoder.config.hidden_size
 
 
     def _move_to_device(self, data, exclude_keys=["text_idx", "query_idx"]):
@@ -538,17 +541,28 @@ class BaseModel(nn.Module):
 
             if log:
                 self.log_result()
+        
+        if self.config.is_distributed:
+            if self.config.is_main_proc:
+                objects = [all_metrics]
+            else:
+                # assign none to other processes
+                objects = [None]
 
-            # other processes automatically return None
-            return all_metrics
+            # broadcast the metrics to all processes
+            dist.broadcast_object_list(objects, src=0)
+            all_metrics = objects[0]
+
+        return all_metrics
 
 
-    def log_result(self):
+    def log_result(self, **kwargs):
         """
             Save the model metrics and configurations in ``performance.log``.
         """
         name = self.name
         metrics = {k: v for k, v in self.metrics.items() if k != "_best"}
+        metrics.update(kwargs)
 
         with open("performance.log", "a+") as f:
             d = self.config
@@ -616,7 +630,7 @@ class BaseModel(nn.Module):
 
         if checkpoint == "none" or checkpoint is None:
             return
-        elif os.path.isfile(checkpoint):
+        elif os.path.isfile(str(checkpoint)):
             save_path = checkpoint
         elif os.path.isfile(f"{self.config.cache_root}/ckpts/{checkpoint}"):
             save_path = f"{self.config.cache_root}/ckpts/{checkpoint}"
@@ -646,6 +660,13 @@ class BaseModel(nn.Module):
             self.logger.warning(f"Unexpected Keys: {unexpected_keys}")
 
 
+    def step_end_callback(self, loaders, state):
+        """
+        Callback at the end of each training step.
+        """
+        pass
+
+
 
 class BaseSparseModel(BaseModel):
     """
@@ -654,9 +675,6 @@ class BaseSparseModel(BaseModel):
     def __init__(self, config:Config):
         super().__init__(config)
 
-        # add the following sparse-model-specific attributes to the config
-        # set to true to rebuild the inverted index every time
-        self._rebuild_index = False
         # set to false to include special tokens into the inverted index
         self._skip_special_tokens = True
         # set to 1 by default, meaning the token weight is stored
@@ -666,8 +684,6 @@ class BaseSparseModel(BaseModel):
         # valid text length for indexing and searching
         self._text_length = self.config.text_length
         self._query_length = self.config.query_length
-
-
 
     def _compute_overlap(self, query_token_id:TENSOR, text_token_id:TENSOR) -> TENSOR:
         """
@@ -765,8 +781,8 @@ class BaseSparseModel(BaseModel):
                 text_embeddings: array of [N, L, D]
                 text_token_ids: array of [N, L]
         """
-        text_token_id_path = os.path.join(self.encode_dir, "text_token_ids.mmp")
-        text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
+        text_token_id_path = os.path.join(self.text_dir, "text_token_ids.mmp")
+        text_embedding_path = os.path.join(self.text_dir, "text_embeddings.mmp")
 
         if load_all_encode:
             text_embeddings = np.memmap(
@@ -914,7 +930,7 @@ class BaseSparseModel(BaseModel):
         text_embeddings_tensor = torch.as_tensor(text_embeddings.copy(), device=self.config.device)
 
         # invvec and invhit share the same inverted index
-        save_dir = os.path.join(self.config.cache_root, "index", self.name, "inv", self.config.plm_tokenizer, "_".join([str(self._text_length), ",".join([str(x) for x in self.config.text_col])]), str(self.config.world_size))
+        save_dir = os.path.join(self.config.cache_root, "index", self.name, self.config.text_type, "inv", "_".join([self.config.plm_tokenizer, str(self._text_length), ",".join([str(x) for x in self.config.text_col])]), str(self.config.world_size))
 
         special_token_ids = set()
         if self._skip_special_tokens:
@@ -931,7 +947,6 @@ class BaseSparseModel(BaseModel):
         index.fit(
             text_token_ids=text_token_ids,
             text_embeddings=text_embeddings_tensor,
-            rebuild_index=self._rebuild_index,
             load_index=self.config.load_index,
             save_index=self.config.save_index,
             threads=self.config.get("index_thread", 16) // self.config.world_size,
@@ -954,17 +969,19 @@ class BaseSparseModel(BaseModel):
         """
         Construct :class:`utils.index.BaseAnseriniIndex`.
         """
-        encode_output = self.encode_text(loader_text)
-
+        if not self.config.load_encode:
+            save_encode = self.config.save_encode
+            self.config.save_encode = True
+            self.logger.warning("Automatically set save_encode=True to save encode results on disk for later usage by anserini!")
+            encode_output = self.encode_text(loader_text)
+            self.config.save_encode = save_encode
+            
         # load cache only on the master node
         all_encode_output = self.encode_text(loader_text, load_all_encode=True)
         if not self.config.is_main_proc:
             all_encode_output = None
 
         if self.config.is_main_proc:
-            if all_encode_output.embeddings is not None:
-                self.logger.warning("Loading all cache from disk, make sure you saved the encoding result (++save_encode) in advance!")
-
             all_text_token_ids = all_encode_output.token_ids
             all_text_token_weights = all_encode_output.embeddings.squeeze(-1) if all_encode_output.embeddings is not None else None
 
@@ -972,8 +989,8 @@ class BaseSparseModel(BaseModel):
             stop_words = set(x[0] for x in self.config.special_token_ids.values() if x[0] is not None)
 
             collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
-            collection_dir = os.path.join(self.index_dir, self.config.index_type, "collection")
-            index_dir = os.path.join(self.index_dir, self.config.index_type, "index")
+            collection_dir = os.path.join(self.index_dir, "collection")
+            index_dir = os.path.join(self.index_dir, "index")
 
             index = ANSERINI_INDEX_MAP[self.config.index_type](
                 collection_path=collection_path,
@@ -1228,7 +1245,7 @@ class BaseSparseModel(BaseModel):
             stop_words.add(r"\d")
 
             thread_num = 0
-            collection_dir = os.path.join(self.config.cache_root, "index", self.name, "impact-word", "collection")
+            collection_dir = os.path.join(self.index_dir, "collection")
             for path in os.listdir(collection_dir):
                 # check if current path is a file
                 if os.path.isfile(os.path.join(collection_dir, path)):
@@ -1254,7 +1271,8 @@ class BaseSparseModel(BaseModel):
                     self.config.code_length,
                     code_order,
                     stop_words,
-                    self.config.get("code_sep", " ")
+                    self.config.get("code_sep", " "),
+                    self.config.get("stem_token_code")
                 ))
 
             # the collection has no special_tokens so we don't need to filter them out
@@ -1304,7 +1322,7 @@ class BaseDenseModel(BaseModel):
             BaseOutput:
                 text_embeddings: array of [N, D]
         """
-        text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
+        text_embedding_path = os.path.join(self.text_dir, "text_embeddings.mmp")
 
         if load_all_encode:
             text_embeddings = np.memmap(
@@ -1698,21 +1716,25 @@ class BaseGenerativeModel(BaseModel):
         encode_output = self.encode_text(loader_text)    # N, L
         text_codes = encode_output.codes
 
+        tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
+
         index = GENERATIVE_INDEX_MAP[self.config.index_type](
             rank=self.config.rank,
             save_dir=self.code_dir,
             pad_token_id=self.config.special_token_ids["pad"][1],
             eos_token_id=self.config.special_token_ids["sep"][1],
-            sep_token_id=AutoTokenizer.from_pretrained(self.config.plm_dir).convert_tokens_to_ids(self.config.code_sep) if self.config.get("code_sep") is not None else None,
+            sep_token_id=tokenizer.convert_tokens_to_ids(self.config.code_sep) if self.config.get("code_sep") is not None else None,
         )
 
         index.fit(
             text_codes=text_codes,
+            tokenizer=tokenizer,
             load_index=self.config.load_index,
             # only save at rank==0 because tries across processes are always the same
             save_index=self.config.save_index,
             threads=self.config.get("index_thread"),
-            shards=self.config.get("index_shard")
+            shards=self.config.get("index_shard"),
+            separator=self.config.get("code_sep")
         )
 
         return BaseOutput(index=index)
@@ -1752,13 +1774,20 @@ class BaseGenerativeModel(BaseModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
-        beam_manager = BeamManager()
+        beam_manager = BeamDecoder()
+
+        tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
+            # if (x["query_idx"].unsqueeze(-1) == torch.tensor([123,379])).sum() == 0:
+            #     continue
+
             query = self._move_to_device(x["query"])
             encoder_outputs = self.plm.encoder(**query)
             B = query["input_ids"].shape[0]
             end_idx = start_idx + B
+
+            # print(tokenizer.batch_decode(query["input_ids"], skip_special_tokens=True))
 
             beam_manager.search(
                 model=self.plm, 
@@ -1768,7 +1797,9 @@ class BaseGenerativeModel(BaseModel):
                 max_new_tokens=self.config.code_length - 1, 
                 constrain_index=index,
                 rank_type=self.config.get("rank_type", "prob"),
-                **query, 
+                tokenizer=tokenizer,
+                dedup=self.config.get("dedup_beam"),
+                **query,
                 encoder_outputs=encoder_outputs
             )
             beams = beam_manager.beams
@@ -1801,56 +1832,9 @@ class BaseGenerativeModel(BaseModel):
                 retrieval_result[j + start_idx + query_start_idx] = [(k, max(v)) for k, v in res.items()]
 
             start_idx = end_idx
-            if self.config.debug:
-                if i > 2:
-                    break
+
+            if self.config.get("debug") and i > 1:
+                break
         
         return retrieval_result
 
-
-    def generate_code(self, loaders):
-        """
-        Generate text codes used in :doc:`/sources/experiments/Model-Based IR`.
-        """
-        if self.config.is_main_proc:
-            # the code is bind to the plm_tokenizer
-            code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
-            # all codes are led by 0 and padded by -1
-            self.logger.info(f"generating codes from {self.config.code_type} with code_length: {self.config.code_length}, saving at {code_path}...")
-
-            loader_text = loaders["text"]
-            text_num = len(loader_text.dataset)
-
-            if self.config.code_type == "title":
-                from utils.util import _get_title_code, makedirs
-
-                collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
-                makedirs(code_path)
-
-                # load all saved token ids
-                text_codes = np.memmap(
-                    code_path,
-                    dtype=np.int32,
-                    mode="w+",
-                    shape=(text_num, self.config.code_length)
-                )
-                # the codes are always led by 0 and padded by -1
-                text_codes[:, 0] = tokenizer.pad_token_id
-                text_codes[:, 1:] = -1
-
-                preprocess_threads = 32
-                all_line_count = text_num
-
-                tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
-
-                arguments = []
-                for i in range(preprocess_threads):
-                    start_idx = round(all_line_count * i / preprocess_threads)
-                    end_idx = round(all_line_count * (i+1) / preprocess_threads)
-                    arguments.append((collection_path, code_path, all_line_count, start_idx, end_idx, tokenizer, self.config.code_length))
-                with mp.Pool(preprocess_threads) as p:
-                    p.starmap(_get_title_code, arguments)
-
-            else:
-                raise NotImplementedError
-        

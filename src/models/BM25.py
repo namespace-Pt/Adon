@@ -18,16 +18,13 @@ class BM25(BaseSparseModel):
         self.special_token_ids = set([x[1] for x in config.special_token_ids.values()])
 
         if self.config.pretokenize:
-            self.index_dir = os.path.join(config.cache_root, "index", self.name, "pretokenize")
-        elif self.config.get("return_code"):
-            self.index_dir = os.path.join(config.cache_root, "index", self.name, config.code_type)
-
+            self.index_dir = os.path.join(self.index_dir, "pretokenize")
 
     @synchronize
     def encode_text(self, loader_text: DataLoader, load_all_encode: bool = False):
         if self.config.pretokenize:
-            text_token_id_path = os.path.join(self.encode_dir, "text_token_ids.mmp")
-            text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
+            text_token_id_path = os.path.join(self.text_dir, "text_token_ids.mmp")
+            text_embedding_path = os.path.join(self.text_dir, "text_embeddings.mmp")
 
             if load_all_encode:
                 text_embeddings = np.memmap(
@@ -124,16 +121,8 @@ class BM25(BaseSparseModel):
             text_embeddings = self._gate_text(text_embeddings)
             return BaseOutput(embeddings=text_embeddings, token_ids=text_token_ids)
 
-        elif self.config.get("return_code"):
-            if load_all_encode:
-                text_codes = loader_text.dataset.text_codes.copy()
-            else:
-                text_codes = loader_text.dataset.text_codes[loader_text.sampler.start: loader_text.sampler.end].copy()
-            return BaseOutput(token_ids=text_codes)
-
         else:
             return BaseOutput()
-
 
     @synchronize
     def encode_query(self, loader_query: DataLoader, load_all_encode: bool = False):
@@ -141,8 +130,88 @@ class BM25(BaseSparseModel):
             return super().encode_query(loader_query, load_all_encode)
         else:
             return BaseOutput()
+    
+    @synchronize
+    def generate_code(self, loaders: LOADERS):
+        """
+        Generate code by BM25 term weights.
+        """
+        import json
+        from pyserini.index.lucene import IndexReader
+        from utils.util import _get_token_code, makedirs
+
+        # the code is bind to the code_tokenizer
+        code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
+        self.logger.info(f"generating codes from {self.config.code_type} with code_length: {self.config.code_length}, saving at {code_path}...")
+        makedirs(code_path)
+
+        tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
+        code_tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+
+        loader_text = loaders["text"]
+        text_num = len(loader_text.dataset)
+        start_idx = loader_text.sampler.start
+        end_idx = loader_text.sampler.end
+
+        if self.config.is_main_proc:
+            # load all saved token ids
+            # all codes are led by 0 and padded by -1
+            text_codes = np.memmap(
+                code_path,
+                dtype=np.int32,
+                mode="w+",
+                shape=(text_num, self.config.code_length)
+            )
+            # the codes are always led by 0 and padded by -1
+            text_codes[:, 0] = tokenizer.pad_token_id
+            text_codes[:, 1:] = -1
+        synchronize()
+
+        stop_words = set()
+        punctuations = set([x for x in ";:'\\\"`~[]<>()\{\}/|?!@$#%^&*…-_=+,."])
+        nltk_stop_words = set(["a", "about", "also", "am", "to", "an", "and", "another", "any", "anyone", "are", "aren't", "as", "at", "be", "been", "being", "but", "by", "despite", "did", "didn't", "do", "does", "doesn't", "doing", "done", "don't", "each", "etc", "every", "everyone", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't", "having", "he", "he'd", "he'll", "her", "here", "here's", "hers", "herself", "he's", "him", "himself", "his", "however", "i", "i'd", "if", "i'll", "i'm", "in", "into", "is", "isn't", "it", "its", "it's", "itself", "i've", "just", "let's", "like", "lot", "may", "me", "might", "mightn't", "my", "myself", "no", "nor", "not", "of", "on", "onto", "or", "other", "ought", "oughtn't", "our", "ours", "ourselves", "out", "over", "shall", "shan't", "she", "she'd", "she'll", "she's", "since", "so", "some", "something", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "tht", "to", "too", "usually", "very", "via", "was", "wasn't", "we", "we'd", "well", "we'll", "were", "we're", "weren't", "we've", "will", "with", "without", "won't", "would", "wouldn't", "yes", "yet", "you", "you'd", "you'll", "your", "you're", "yours", "yourself", "yourselves", "you've"])
+        # include punctuations
+        stop_words = stop_words | punctuations
+        # include nltk stop words
+        stop_words = stop_words | nltk_stop_words
+        # include numbers in stopwords
+        stop_words.add(r"\d")
+
+        collection_dir = os.path.join(os.path.join(self.index_dir, "collection"), "weighted")
+
+        input_path = f"{collection_dir}/{self.config.rank:02d}.jsonl"
+        makedirs(input_path)
+        
+        if self.config.get("load_collection"):
+            pass
+        else:
+            bm25_index = IndexReader(os.path.join(self.index_dir, "index"))
+            with open(input_path, "w") as f:
+                for i in tqdm(range(start_idx, end_idx), leave=False, ncols=100, desc="Collecting DFs"):
+                    x = loader_text.dataset[i]
+
+                    text_idx = x["text_idx"]
+                    text_token_id = x["text"]["input_ids"]
+                    text = tokenizer.decode(text_token_id, skip_special_tokens=True)
+                    words = text.split(" ")
+                    word_weight_pairs = {}
+                    for word in words:
+                        if len(word) > 1 and word not in word_weight_pairs:
+                            # bypass the error when the word is not stored in the index
+                            try:
+                                # NOTE: the word is always lowercased
+                                word_weight_pairs[word.lower()] = round(bm25_index.compute_bm25_term_weight(str(text_idx), word), 3)
+                            except:
+                                pass
+
+                    doc_vec = {"id": text_idx, "vector": word_weight_pairs}
+                    f.write(json.dumps(doc_vec) + "\n")
+        
+        # force to stem
+        _get_token_code(input_path, code_path, text_num, start_idx, end_idx, code_tokenizer, self.config.code_length, "weight", stop_words, self.config.get("code_sep", " "), self.config.get("stem_token_code"))
 
 
+    # FIXME: refactor
     def rerank(self, loaders: dict):
         from pyserini.index.lucene import IndexReader
         from utils.util import load_pickle

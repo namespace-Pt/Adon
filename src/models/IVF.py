@@ -57,7 +57,6 @@ class TopIVF(BaseSparseModel):
             self.queryEncoder = AutoModel.from_pretrained(f"{config.plm_root}/retromae_distill")
             self.queryEncoder.pooler = None
 
-        self._rebuild_index = True
         self._posting_entry_num = index.nlist
         self._skip_special_tokens = False
         self._text_length = 1
@@ -231,8 +230,8 @@ class TopIVF(BaseSparseModel):
                 text_embeddings: array of [N, L, D]
                 text_token_ids: array of [N, L]
         """
-        text_token_id_path = os.path.join(self.encode_dir, "text_token_ids.mmp")
-        text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
+        text_token_id_path = os.path.join(self.text_dir, "text_token_ids.mmp")
+        text_embedding_path = os.path.join(self.text_dir, "text_embeddings.mmp")
 
         if load_all_encode:
             text_embeddings = np.memmap(
@@ -346,7 +345,6 @@ class IVF(BaseSparseModel):
 
         self._ivf_codes = ivf_codes
 
-        self._rebuild_index = True
         self._posting_entry_num = ivf_index.nlist
         self._skip_special_tokens = False
         self._text_length = 1
@@ -375,8 +373,8 @@ class IVF(BaseSparseModel):
     @synchronize
     @torch.no_grad()
     def encode_text(self, loader_text, load_all_encode=False):
-        text_token_id_path = os.path.join(self.encode_dir, "text_token_ids.mmp")
-        text_embedding_path = os.path.join(self.encode_dir, "text_embeddings.mmp")
+        text_token_id_path = os.path.join(self.text_dir, "text_token_ids.mmp")
+        text_embedding_path = os.path.join(self.text_dir, "text_embeddings.mmp")
 
         if load_all_encode:
             text_embeddings = np.memmap(

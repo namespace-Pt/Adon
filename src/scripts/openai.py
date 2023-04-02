@@ -97,7 +97,6 @@ import time  # for sleeping after rate limit is hit
 from dataclasses import dataclass  # for storing API inputs, outputs, and metadata
 
 
-# TODO: 1122 requests fail
 
 async def process_api_requests_from_file(
     requests_filepath: str,
@@ -139,7 +138,7 @@ async def process_api_requests_from_file(
     logging.debug(f"Initialization complete.")
 
     # initialize file reading
-    with open(requests_filepath) as file:
+    with open(requests_filepath, encoding="utf-8") as file:
         # `requests` will provide requests one at a time
         requests = file.__iter__()
         logging.debug(f"File opened. Entering main loop")
@@ -333,11 +332,18 @@ def num_tokens_consumed_from_request(
             n = request_json.get("n", 1)
             completion_tokens = n * max_tokens
             if isinstance(prompt, str):  # single prompt
-                prompt_tokens = len(encoding.encode(prompt))
+                # always use try except to prevent utf8 encoding error
+                try:
+                    prompt_tokens = len(encoding.encode(prompt))
+                except:
+                    prompt_tokens = 0
                 num_tokens = prompt_tokens + completion_tokens
                 return num_tokens
             elif isinstance(prompt, list):  # multiple prompts
-                prompt_tokens = sum([len(encoding.encode(p)) for p in prompt])
+                try:
+                    prompt_tokens = sum([len(encoding.encode(p)) for p in prompt])
+                except:
+                    prompt_tokens = 0
                 num_tokens = prompt_tokens + completion_tokens
                 return num_tokens
             else:
@@ -349,7 +355,10 @@ def num_tokens_consumed_from_request(
             completion_tokens = n * max_tokens
             num_tokens = 0
             for message in messages:
-                num_tokens += len(encoding.encode(message["content"]))
+                try:
+                    num_tokens += len(encoding.encode(message["content"]))
+                except:
+                    pass
             return num_tokens
         else:
             raise TypeError('Expecting prompt or messages in request field!')
@@ -358,10 +367,16 @@ def num_tokens_consumed_from_request(
     elif api_endpoint == "embeddings":
         input = request_json["input"]
         if isinstance(input, str):  # single input
-            num_tokens = len(encoding.encode(input))
+            try:
+                num_tokens = len(encoding.encode(input))
+            except:
+                num_tokens = 0
             return num_tokens
         elif isinstance(input, list):  # multiple inputs
-            num_tokens = sum([len(encoding.encode(i)) for i in input])
+            try:
+                num_tokens = sum([len(encoding.encode(i)) for i in input])
+            except:
+                num_tokens = 0
             return num_tokens
         else:
             raise TypeError('Expecting either string or list of strings for "inputs" field in embedding request')
@@ -386,8 +401,8 @@ if __name__ == "__main__":
     parser.add_argument("--save_filepath", default=None)
     parser.add_argument("--request_url", default="https://api.openai.com/v1/chat/completions")
     parser.add_argument("--api_key", default=os.getenv("OPENAI_API_KEY"))
-    parser.add_argument("--max_requests_per_minute", type=int, default=10 * 0.5)
-    parser.add_argument("--max_tokens_per_minute", type=int, default=250_000 * 0.5)
+    parser.add_argument("--max_requests_per_minute", type=int, default=3500*0.7)
+    parser.add_argument("--max_tokens_per_minute", type=int, default=90000*0.8)
     parser.add_argument("--token_encoding_name", default="cl100k_base")
     parser.add_argument("--max_attempts", type=int, default=5)
     parser.add_argument("--logging_level", default=logging.INFO)

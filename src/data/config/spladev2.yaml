@@ -32,5 +32,5 @@ train:
   eval_step: 5e
 
 eval:
-  eval_posting_length: True
-  eval_flops: True
+  eval_posting_length: true
+  eval_flops: true

@@ -14,8 +14,8 @@ from transformers.training_args import (
     is_sagemaker_dp_enabled,
     is_sagemaker_mp_enabled,
     is_torch_tpu_available,
+    get_int_from_env,
     torch_required,
-    get_int_from_env
 )
 
 from transformers.trainer import (
@@ -35,37 +35,9 @@ from transformers.trainer import (
     has_length,
     hp_params,
     speed_metrics,
-    dep_version_check,
-    is_apex_available,
-    is_fairscale_available,
     TRAINER_STATE_NAME,
     logger
 )
-
-if is_apex_available():
-    from apex import amp
-
-if is_fairscale_available():
-    dep_version_check("fairscale")
-    import fairscale
-    from fairscale.nn.data_parallel import FullyShardedDataParallel as FullyShardedDDP
-    from fairscale.nn.data_parallel import ShardedDataParallel as ShardedDDP
-    from fairscale.nn.wrap import auto_wrap
-    from fairscale.optim import OSS
-    from fairscale.optim.grad_scaler import ShardedGradScaler
-
-if is_torch_tpu_available(check_device=False):
-    import torch_xla.core.xla_model as xm
-    import torch_xla.core.xla_model as xm
-    import torch_xla.debug.metrics as met
-    import torch_xla.distributed.parallel_loader as pl
-
-if is_sagemaker_mp_enabled():
-    import smdistributed.modelparallel.torch as smp
-    smp.init()
-
-# prevent warning of transformers
-transformers.logging.set_verbosity_error()
 
 
 def train(model, loaders):
@@ -93,6 +65,8 @@ def train(model, loaders):
         # keep the progress callback
         disable_tqdm=False,
         logging_nan_inf_filter=False,
+        # if device is cpu, do not activate gpu
+        no_cuda=config.device == "cpu",
         # align trainingarguments.device to our config.device
         device_index=config.device,
         per_device_train_batch_size=config.batch_size,
@@ -114,7 +88,9 @@ def train(model, loaders):
         lr_scheduler_type=config.scheduler,
         warmup_ratio=config.warmup_ratio,
         warmup_steps=config.warmup_steps,
-        metric_for_best_model=config.main_metric
+        metric_for_best_model=config.main_metric,
+        early_stop_patience=config.early_stop_patience,
+        deepspeed=config.get("deepspeed")
     )
 
     trainer = AdonTrainer(
@@ -126,13 +102,18 @@ def train(model, loaders):
     )
     trainer.remove_callback(DefaultFlowCallback)
     trainer.remove_callback(ProgressCallback)
-    trainer.add_callback(AdonFlowCallback)
+    # add progress callback first to avoid extra 1 step tqdm logging
     trainer.add_callback(AdonProgressCallback)
+    trainer.add_callback(AdonFlowCallback)
     trainer.train()
 
 
 @dataclass
 class AdonTrainingArguments(TrainingArguments):
+    """
+    # Slightly modified the TrainingArguments from huggingface, aligning with our device policy.
+    # The modified place is marked with "NOTE:"
+    """
     device_index: DEVICE = field(
         default=0,
         metadata={"help": "The device to put model and data."}
@@ -147,6 +128,7 @@ class AdonTrainingArguments(TrainingArguments):
         }
     )
     save_at_eval: bool = field(default=False, metadata={"help": "Save model at each evaluation time?"})
+    early_stop_patience: int = field(default=int(1e9), metadata={"help": "Stop training when the evaluation results is inferior to the best one for ? times."})
 
     @cached_property
     @torch_required
@@ -205,7 +187,7 @@ class AdonTrainingArguments(TrainingArguments):
             self._n_gpu = 1
         elif self.deepspeed:
             # deepspeed inits torch.distributed internally
-            from .deepspeed import is_deepspeed_available
+            from transformers.deepspeed import is_deepspeed_available
 
             if not is_deepspeed_available():
                 raise ImportError("--deepspeed requires deepspeed: `pip install deepspeed`.")
@@ -262,7 +244,6 @@ class AdonFlowCallback(TrainerCallback):
         return control
 
 
-
 class AdonProgressCallback(TrainerCallback):
     def __init__(self):
         self.training_bar = None
@@ -276,12 +257,15 @@ class AdonProgressCallback(TrainerCallback):
         if state.is_local_process_zero:
             self.training_bar.update(state.global_step - self.current_step)
             # :.4f limits 4 decimal places to display; :.3E uses scitific notation with 3 decimal places
-            self.training_bar.set_description(f"Epoch={state.epoch:.3f}, Loss={state.tr_loss:.4f}, LR={state.learning_rate:.3E}")
+            self.training_bar.set_description(f"Epoch={state.epoch:.3f}, Loss={state.tr_loss:.4f}, LR={state.learning_rate:.3e}")
             self.current_step = state.global_step
 
 
-
 class AdonTrainer(Trainer):
+    """
+    Slightly modified the Trainer from huggingface. Add num_update_steps_per_epoch and tr_loss and learning_rate to self.state for tqdm logging.
+    The modified place is marked with "NOTE:"
+    """
     def __init__(self, loaders, *args, **kwargs):
         """
         Override the huggingface Trainer
@@ -319,23 +303,34 @@ class AdonTrainer(Trainer):
         self._memory_tracker.start()
         metrics = self.model.evaluate(self.loaders, log=False)
 
-        if self.state.is_world_process_zero:
-            metrics["step"] = self.state.global_step
-            metrics["_best"] = metrics[self.args.metric_for_best_model]
-            # the first evaluation time, the model has no main metric stored
-            if "_best" not in self.model.metrics:
-                self.model.metrics["_best"] = -1
+        metrics["_best"] = metrics[self.args.metric_for_best_model]
+        # the first evaluation time, the model has no main metric stored
+        if "_best" not in self.model.metrics:
+            self.model.metrics["_best"] = -1
 
-            if metrics["_best"] > self.model.metrics["_best"]:
-                # update metrics
-                self.model.metrics["_best"] = metrics["_best"]
+        # when current metric is better, store model and log to file
+        if metrics["_best"] > self.model.metrics["_best"]:
+            # update metrics
+            self.model.metrics["_best"] = metrics["_best"]
+            
+            if self.state.is_world_process_zero:
                 if self.args.save_at_eval:
                     self.model.save(self.state.global_step)
                 else:
                     self.model.save()
                 # save to log file
-                self.model.log_result()
+                self.model.log_result(step=self.state.epoch)
 
+            self.control.early_stop_patience_counter = 0
+        
+        else:
+            # early stop
+            self.control.early_stop_patience_counter += 1
+            if self.control.early_stop_patience_counter >= self.args.early_stop_patience:
+                logger.info(f"\n{self.control.early_stop_patience_counter} SUCCESSIVE INFERIOR PERFORMANCE THAN BEST, EARLY STOPPING!")
+                # end training
+                self.control.should_training_stop = True
+                    
         # very important to set it back; otherwise the evaluate function may be called twice at epoch end
         self.control.should_evaluate = False
         # release cache
@@ -438,7 +433,14 @@ class AdonTrainer(Trainer):
         logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}")
         logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
         logger.info(f"  Total optimization steps = {max_steps}")
+        
+        # NOTE: save how many steps are there in one epoch
+        self.state.num_update_steps_per_epoch = num_update_steps_per_epoch        
         logger.info(f"  Optimization steps per epoch = {num_update_steps_per_epoch}")
+
+        logger.info(
+            f"  Number of trainable parameters = {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
+        )
 
         self.state.epoch = 0
         start_time = time.time()
@@ -643,12 +645,16 @@ class AdonTrainer(Trainer):
                     model.zero_grad()
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                    # modify here, add tr_loss and learning_rate to the callback so that it can be printed on the tqdm progress bar
+
+                    # NOTE: modify here, add tr_loss and learning_rate to the callback so that it can be printed on the tqdm progress bar
                     tqdm_log_loss = tr_loss.item() / (self.state.global_step - self._globalstep_last_logged)
                     tqdm_log_lr = self._get_learning_rate()
                     # set to state so that it can be accessed in callbacks
                     self.state.tr_loss = tqdm_log_loss
                     self.state.learning_rate = tqdm_log_lr
+                    # add callback executing
+                    # model.step_end_callback(self.loaders, state=self.state)
+
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
@@ -684,7 +690,6 @@ class AdonTrainer(Trainer):
             # Clean the state at the end of training
             delattr(self, "_past")
 
-        logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
         if args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
             # Wait for everyone to get here so we are sur the model has been saved by process 0.
             if is_torch_tpu_available():
@@ -713,7 +718,4 @@ class AdonTrainer(Trainer):
 
         self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
-        logger.info(f"Best Metrics: {self.model.metrics}")
-
         return TrainOutput(self.state.global_step, train_loss, metrics)
-

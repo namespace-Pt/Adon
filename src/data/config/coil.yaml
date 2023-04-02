@@ -11,7 +11,7 @@ defaults:
 
 model:
   model_type: coil
-  return_sep_mask: True
+  return_sep_mask: true
   token_dim: 32
 
 index:
@@ -21,4 +21,4 @@ train:
   hard_neg_num: 7
 
 eval:
-  eval_posting_length: True
+  eval_posting_length: true

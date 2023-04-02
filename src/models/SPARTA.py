@@ -16,7 +16,6 @@ class SPARTA(BaseSparseModel):
         self.plm = AutoModel.from_pretrained(config.plm_dir)
         self.plm.pooler = None
 
-        self._rebuild_index = True
         self._skip_special_tokens = True
         self._text_length = self.config.text_decode_k
 

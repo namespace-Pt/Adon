@@ -12,12 +12,9 @@ class DSI(BaseGenerativeModel):
         self.plm = T5ForConditionalGeneration.from_pretrained(config.plm_dir)
         if config.code_size > 0:
             self.plm.resize_token_embeddings(config.vocab_size + config.code_size)
-
-        if config.code_type == "UniCOIL-weight-align":
-            self.logger.info("initializing new tokens embeddings...")
-            new_token_embeds = np.load(os.path.join(config.cache_root, "codes", "UniCOIL-weight-align", config.code_tokenizer, str(config.code_length), "new_token_embeds.npy"))
-            self.plm.encoder.embed_tokens.weight.data[-config.code_size:] = torch.tensor(new_token_embeds)
-
+        
+        # NOTE: set hidden size to be involked when using deepspeed
+        self.config.hidden_size = self.plm.config.hidden_size
 
     def forward(self, x):
         x = self._move_to_device(x)
@@ -46,3 +43,50 @@ class DSI(BaseGenerativeModel):
         logits = logits.log_softmax(-1)
         score = logits.gather(dim=-1, index=text_code[:, 1:, None]).squeeze(-1).sum(-1)
         return score
+
+
+class GENRE(DSI):
+    def __init__(self, config):
+        super().__init__(config)
+    
+    def generate_code(self, loaders):
+        import multiprocessing as mp
+        from transformers import AutoTokenizer
+
+        assert self.config.code_type == "title"
+        if self.config.is_main_proc:
+            # the code is bind to the plm_tokenizer
+            code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
+            # all codes are led by 0 and padded by -1
+            self.logger.info(f"generating codes from {self.config.code_type} with code_length: {self.config.code_length}, saving at {code_path}...")
+
+            loader_text = loaders["text"]
+            text_num = len(loader_text.dataset)
+
+            from utils.util import _get_title_code, makedirs
+
+            collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
+            makedirs(code_path)
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+
+            # load all saved token ids
+            text_codes = np.memmap(
+                code_path,
+                dtype=np.int32,
+                mode="w+",
+                shape=(text_num, self.config.code_length)
+            )
+            # the codes are always led by 0 and padded by -1
+            text_codes[:, 0] = tokenizer.pad_token_id
+            text_codes[:, 1:] = -1
+
+            preprocess_threads = 10
+            all_line_count = text_num
+
+            arguments = [] 
+            for i in range(preprocess_threads):
+                start_idx = round(all_line_count * i / preprocess_threads)
+                end_idx = round(all_line_count * (i+1) / preprocess_threads)
+                arguments.append((collection_path, code_path, all_line_count, start_idx, end_idx, tokenizer, self.config.code_length, self.config.get("code_sep", " ")))
+            with mp.Pool(preprocess_threads) as p:
+                p.starmap(_get_title_code, arguments)

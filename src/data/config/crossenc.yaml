@@ -20,6 +20,3 @@ train:
   learning_rate: 3e-5
 
   hard_neg_num: 7
-
-eval:
-  loader_rerank: raw

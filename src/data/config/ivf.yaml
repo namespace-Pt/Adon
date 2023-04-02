@@ -26,7 +26,7 @@ model:
 
 eval:
   hits: 0
-  eval_posting_length: True
+  eval_posting_length: true
 
   verifier_type: pq
   verifier_src: DistillVQ_d-RetroMAE

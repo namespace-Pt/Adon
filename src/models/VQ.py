@@ -258,9 +258,9 @@ class DistillVQ(BaseDenseModel):
         else:
             # create soft link to the embedding_src
             if self.config.is_main_proc and self.config.save_encode:
-                os.makedirs(self.encode_dir, exist_ok=True)
+                os.makedirs(self.text_dir, exist_ok=True)
                 subprocess.run(
-                    f"ln -sf {os.path.join(self.config.cache_root, 'encode', self.config.embedding_src, 'text_embeddings.mmp')} {os.path.join(self.encode_dir, 'text_embeddings.mmp')}",
+                    f"ln -sf {os.path.join(self.config.cache_root, 'encode', self.config.embedding_src, 'text_embeddings.mmp')} {os.path.join(self.text_dir, 'text_embeddings.mmp')}",
                     shell=True
                 )
 

@@ -28,6 +28,7 @@ class BaseDataset(Dataset):
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
 
 
+
 class TextDataset(BaseDataset):
     """
     Iterating the collection.
@@ -39,11 +40,21 @@ class TextDataset(BaseDataset):
         if config.data_format == "memmap":
             text_name = ",".join([str(x) for x in config.text_col])
 
-            self.text_token_ids = np.memmap(
-                os.path.join(self.cache_dir, "text", text_name, config.plm_tokenizer, "token_ids.mmp"),
-                mode="r",
-                dtype=np.int32
-            ).reshape(-1, config.max_text_length)[:, :self.config.text_length]
+            if config.text_type == "default":
+                self.text_token_ids = np.memmap(
+                    os.path.join(self.cache_dir, "text", text_name, config.plm_tokenizer, "token_ids.mmp"),
+                    mode="r",
+                    dtype=np.int32
+                ).reshape(-1, config.max_text_length)[:, :self.config.text_length]
+            elif config.text_type == "code":
+                self.text_token_ids = np.memmap(
+                    os.path.join(config.cache_root, "codes", config.code_type, config.plm_tokenizer, str(config.text_length), "codes.mmp"),
+                    # read-only mode
+                    mode="r",
+                    dtype=np.int32
+                ).reshape(-1, config.text_length)
+            else:
+                raise NotImplementedError(f"Invalid text type {config.text_type}!")
             self.text_num = len(self.text_token_ids)
 
         elif config.data_format == "raw":
@@ -51,14 +62,17 @@ class TextDataset(BaseDataset):
             corpus = []
             # the seperator may be special token or regular token
             seperator = config.text_col_sep
-            with open(os.path.join(config.data_root, config.dataset, text_name)) as f:
-                for line in f:
-                    columns = line.split("\t")
-                    text = []
-                    for col_idx in config.text_col:
-                        text.append(columns[col_idx].strip())
-                    text = seperator.join(text)
-                    corpus.append(text)
+            if config.text_type == "default":
+                with open(os.path.join(config.data_root, config.dataset, text_name)) as f:
+                    for line in f:
+                        columns = line.split("\t")
+                        text = []
+                        for col_idx in config.text_col:
+                            text.append(columns[col_idx].strip())
+                        text = seperator.join(text)
+                        corpus.append(text)
+            else:
+                raise NotImplementedError(f"Invalid text type {config.text_type} for data format {config.data_format}!")
             self.texts = np.array(corpus, dtype=object)
             self.text_num = len(self.texts)
 
@@ -80,10 +94,18 @@ class TextDataset(BaseDataset):
     def __len__(self) -> int:
         return self.text_num
 
-    def _prepare_for_model(self, token_id, max_length):
-        assert isinstance(token_id, list)
-        if self.config.get("text_prefix"):
-            token_id = self.tokenizer.encode(self.config.text_prefix, add_special_tokens=False) + token_id
+    def _prepare_for_model(self, token_id:np.ndarray, max_length):
+        if self.config.text_type == "default":
+            token_id = token_id[token_id != -1].tolist()
+            if self.config.get("text_prefix"):
+                token_id = self.tokenizer.encode(self.config.text_prefix, add_special_tokens=False) + token_id
+        elif self.config.text_type == "code":
+            # neglect the first padding token
+            # copy the code because the memmap is read-only
+            token_id = token_id[1:].copy()
+            token_id[token_id == self.sep_token_id] = -1
+            # neglect the last sep_token_id or eos_token_id
+            token_id = token_id[token_id != -1].tolist()
         outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True)
         return outputs
     
@@ -104,7 +126,6 @@ class TextDataset(BaseDataset):
         if self.config.data_format == "memmap":
             if isinstance(index, int):
                 text_token_id = self.text_token_ids[index]
-                text_token_id = text_token_id[text_token_id != -1].tolist()
                 text = self._prepare_for_model(text_token_id, self.config.text_length)
             
             elif isinstance(index, np.ndarray) or isinstance(index, list):
@@ -113,7 +134,6 @@ class TextDataset(BaseDataset):
                 text_token_ids = self.text_token_ids[index]
                 # in this case, we need to load a bunch of texts once
                 for text_token_id in text_token_ids:
-                    text_token_id = text_token_id[text_token_id != -1].tolist()
                     text_outputs = self._prepare_for_model(text_token_id, self.config.text_length)
                     input_ids.append(text_outputs.input_ids)
                     attention_mask.append(text_outputs.attention_mask)
@@ -215,12 +235,12 @@ class QueryDataset(BaseDataset):
                 mode="r",
                 dtype=np.float32
             ).reshape(self.query_num, 768)
-
+        
     def __len__(self):
         return self.query_num
 
-    def _prepare_for_model(self, token_id, max_length):
-        assert isinstance(token_id, list)
+    def _prepare_for_model(self, token_id:np.ndarray, max_length):
+        token_id = token_id[token_id != -1].tolist()
         if self.config.get("query_prefix"):
             token_id = self.tokenizer.encode(self.config.query_prefix, add_special_tokens=False) + token_id
         outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True)
@@ -235,18 +255,37 @@ class QueryDataset(BaseDataset):
                     inputs[i] = self.config.text_prefix + x
         return self.tokenizer(inputs, padding="max_length", max_length=max_length, truncation=True)
 
-    def __getitem__(self, index:int):
+    def __getitem__(self, index:Union[int,np.ndarray,list]):
         """
         Returns:
             dictionary containing one piece of query
         """
         if self.config.data_format == "memmap":
-            query_token_id = self.query_token_ids[index]
-            query_token_id = query_token_id[query_token_id != -1].tolist()
-            query = self._prepare_for_model(query_token_id, self.config.query_length)
+            if isinstance(index, int):
+                query_token_id = self.query_token_ids[index]
+                query = self._prepare_for_model(query_token_id, self.config.query_length)
+
+            elif isinstance(index, np.ndarray) or isinstance(index, list):
+                input_ids = []
+                attention_mask = []
+                query_token_ids = self.query_token_ids[index]
+                # in this case, we need to load a bunch of texts once
+                for query_token_id in query_token_ids:
+                    query_outputs = self._prepare_for_model(query_token_id, self.config.query_length)
+                    input_ids.append(query_outputs.input_ids)
+                    attention_mask.append(query_outputs.attention_mask)
+                query = {
+                    "input_ids": input_ids,
+                    "attention_mask": attention_mask
+                }
 
         elif self.config.data_format == "raw":
-            query = self._tokenize(self.queries[index], self.config.query_length)
+            if isinstance(index, int):
+                query = self._tokenize(self.queries[index], self.config.query_length)
+            
+            elif isinstance(index, np.ndarray) or isinstance(index, list):
+                query = self.queries[index].tolist()
+                query = self._tokenize(query, self.config.query_length)
 
         return_dict = {
             "query_idx": index,
@@ -255,7 +294,7 @@ class QueryDataset(BaseDataset):
 
         if self.config.get("return_embedding"):
             return_dict["query_embedding"] = self.query_embeddings[index].astype(np.float32)
-
+        
         return return_dict
 
 
@@ -268,7 +307,7 @@ class TrainDataset(BaseDataset):
         self.text_num = text_dataset.text_num
         self.query_num = sum([dataset.query_num for dataset in query_datasets])
         
-        if config.enable_distill == "bi":
+        if config.get("enable_distill") == "bi":
             self.text_teacher_embeddings = np.memmap(
                 os.path.join(config.cache_root, "encode", config.distill_src, "text_embeddings.mmp"),
                 mode="r",
@@ -276,6 +315,9 @@ class TrainDataset(BaseDataset):
             ).reshape(self.text_num, -1)
             # there would be multiple teacher embeddings, each corresponding to a query set
             self.query_teacher_embeddings = []
+        
+        if config.get("return_query_code"):
+            self.query_codes = []
 
         qrels = []
         negatives = {}
@@ -290,12 +332,35 @@ class TrainDataset(BaseDataset):
             # negatives are two-layered dictionary, the first layer for different query sets, the second for queries
             negatives[i] = negative
 
-            if config.enable_distill == "bi":
+            if config.get("enable_distill") == "bi":
                 self.query_teacher_embeddings.append(np.memmap(
                     os.path.join(config.cache_root, "encode", config.distill_src, query_set, "query_embeddings.mmp"),
                     mode="r",
                     dtype=np.float32
                 ).reshape(query_dataset.query_num, -1))
+            
+            if config.get("return_query_code"):
+                self.query_codes.append(np.memmap(
+                    os.path.join(config.cache_root, "codes", config.code_type, config.code_tokenizer, str(config.code_length), config.code_src, query_set, "codes.mmp"),
+                    mode="r",
+                    dtype=np.int32
+                ).reshape(-1, config.code_length))
+        
+        if self.config.get("permute_code") and self.config.permute_code > 0:
+            assert config.code_sep is not None
+            assert config.hard_neg_type == "none"
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(config.plm_root, config.code_tokenizer))
+            code_sep_id = tokenizer.convert_tokens_to_ids(config.code_sep)
+            self.code_sep_id = code_sep_id
+            self.eos_token_id = tokenizer.eos_token_id
+        
+        if self.config.get("elastic_ce"):
+            assert self.config.return_code and self.config.code_sep != " "
+            assert config.hard_neg_type == "none"
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(config.plm_root, config.code_tokenizer))
+            code_sep_id = tokenizer.convert_tokens_to_ids(config.code_sep)
+            self.code_sep_id = code_sep_id
+            self.eos_token_id = tokenizer.eos_token_id
 
         self.qrels = qrels
         self.negatives = negatives
@@ -309,8 +374,9 @@ class TrainDataset(BaseDataset):
         """
         qrels = load_pickle(qrel_path)
         # append the query_set_idx to each qrel element
+        # also append qrel_idx
         for i, x in enumerate(qrels):
-            qrels[i] = (query_set_idx,) + x
+            qrels[i] = (i, query_set_idx,) + x
 
         if self.config.hard_neg_type == "random":
             all_positives = set([x[1] for x in qrels])
@@ -324,7 +390,7 @@ class TrainDataset(BaseDataset):
 
         else:
             negatives = load_pickle(negative_path)
-            for k,v in negatives.items():
+            for k, v in negatives.items():
                 neg_num = len(v)
                 if neg_num < self.config.hard_neg_num:
                     negatives[k] = v + choices(v, k=self.config.hard_neg_num - neg_num)
@@ -335,7 +401,8 @@ class TrainDataset(BaseDataset):
             # discard records that do not have negatives
             new_qrels = []
             for x in qrels:
-                if x[1] in negatives:
+                # x[2] denotes query_idx
+                if x[2] in negatives:
                     new_qrels.append(x)
 
         return new_qrels, negatives
@@ -350,7 +417,7 @@ class TrainDataset(BaseDataset):
         Returns:
             dictionary containing the query and its positive document and its hard negative documents
         """
-        query_set_idx, query_idx, pos_text_idx = self.qrels[index]
+        qrel_idx, query_set_idx, query_idx, pos_text_idx = self.qrels[index]
         if self.config.hard_neg_type != "none":
             neg_text_idx = sample(self.negatives[query_set_idx][query_idx], self.config.hard_neg_num)
         else:
@@ -362,7 +429,8 @@ class TrainDataset(BaseDataset):
 
         return_dict = {
             **text_outputs,
-            **query_outputs
+            **query_outputs,
+            "qrel_idx": qrel_idx
         }
 
         if self.config.get("return_sep_mask"):
@@ -374,10 +442,10 @@ class TrainDataset(BaseDataset):
             query_sep_mask[sep_pos] = 0
             return_dict["query_sep_mask"] = query_sep_mask
 
-        if self.config.enable_distill == "bi":
+        if self.config.get("enable_distill") == "bi":
             return_dict["query_teacher_embedding"] = self.query_teacher_embeddings[query_set_idx][query_idx].astype(np.float32)
             return_dict["text_teacher_embedding"] = self.text_teacher_embeddings[text_idx].astype(np.float32)
-        elif self.config.enable_distill == "cross":
+        elif self.config.get("enable_distill") == "cross":
             # TODO
             pass
 
@@ -405,6 +473,100 @@ class TrainDataset(BaseDataset):
             max_length = min(self.tokenizer.model_max_length, self.config.text_length + self.config.query_length)
             pair = self.tokenizer(raw_query, raw_text, padding="max_length", max_length=max_length, truncation="only_second")
             return_dict["pair"] = pair
+        
+        if self.config.get("return_query_code"):
+            # FIXME: here is a displeasing workaround
+            # we need to maintain a query-text table to generate multiple codes for multiple texts
+            return_dict["query_code"] = self.query_codes[query_set_idx][[qrel_idx]].astype(np.int64)
+        
+        if self.config.get("permute_code") is not None and self.config.permute_code > 0:
+            # there must be only one text
+            text_code = return_dict["text_code"][0]
+            text_codewords = []
+            word = []
+            # get each keyword
+            for c in text_code:
+                if c == 0:
+                    continue
+                if c == -1:
+                    break
+                word.append(c)
+                if c == self.code_sep_id:
+                    text_codewords.append(word)
+                    word = []
+            enhanced_text_code = []
+            for i in range(self.config.permute_code):
+                order = np.random.permutation(len(text_codewords))
+                # prepend 0 at the head
+                code = sum([text_codewords[x] for x in order], [0]) + word
+                code += [-1 for _ in range(len(text_code) - len(code))]
+                # word keeps eos_token_id
+                enhanced_text_code.append(code)
+            # int64
+            return_dict["text_code"] = np.array(enhanced_text_code)
+        
+        if self.config.get("elastic_ce"):
+            text_code = return_dict["text_code"][0][1:]
+            
+            from .index import TrieIndex
+            trie = TrieIndex()
+            word = []
+            for i, c in enumerate(text_code):
+                word.append(c)
+                if c == self.eos_token_id:
+                    break
+                if c == self.code_sep_id:
+                    trie[word] = True
+                    word.clear()
+            
+            # defaults to -1
+            elastic_labels = np.zeros((len(text_code), len(text_code)), dtype=np.int64) - 1
+            j = 0
+            prefix = []
+            for i, c in enumerate(text_code):
+                if c == self.eos_token_id:
+                    elastic_labels[i, :] = c
+                    break
+                valid_tokens = trie.get_valid_tokens(prefix)
+                elastic_labels[i, :len(valid_tokens)] = valid_tokens
+                if len(valid_tokens) < len(text_code):
+                    elastic_labels[i, len(valid_tokens):] = -1
+
+                prefix.append(c)
+                if c == self.code_sep_id:
+                    del trie[prefix]
+                    prefix.clear()
+
+            # # collect first token of each word
+            # first_tokens = []
+            # j = 0
+            # for i, c in enumerate(text_code):
+            #     if j == 0:
+            #         first_tokens.append(c)
+            #         j += 1
+            #     if c == self.eos_token_id:
+            #         break
+            #     elif c == self.code_sep_id:
+            #         j = 0
+
+            # elastic_labels = np.zeros((len(text_code), len(text_code)), dtype=np.int64)
+            # j = 0
+            # for i, c in enumerate(text_code):
+            #     if j == 0:
+            #         elastic_labels[i, :len(first_tokens)] = first_tokens
+            #         if len(first_tokens) < len(text_code):
+            #             elastic_labels[i, len(first_tokens):] = -1
+            #         first_tokens.pop(0)
+            #         j += 1
+
+            #         if c == self.eos_token_id:
+            #             break
+            #     else:
+            #         elastic_labels[i, :] = c
+            #         if c == self.code_sep_id:
+            #             j = 0
+
+            return_dict["elastic_label"] = elastic_labels
 
         return return_dict
 
@@ -598,6 +760,7 @@ class Sequential_Sampler:
             rank = 0
         self.start = round(len_per_worker * rank)
         self.end = round(len_per_worker * (rank + 1))
+        self.rank = rank
 
     def __iter__(self):
         start = self.start
@@ -691,8 +854,11 @@ def prepare_train_data(config, text_dataset=None, return_dataloader=False):
         train_dataset = RawTripleTrainDataset(config)
     elif config.get("loader_train") == "pair":
         train_dataset = PairDataset(config, text_dataset, query_datasets, mode="train")
+    else:
+        raise NotImplementedError(f"")
     # only used in developing (dev.ipynb)
     if return_dataloader:
-        train_loader = DataLoader(train_dataset, batch_size=config.batch_size, collate_fn=default_collate)
+        sampler_train = Sequential_Sampler(len(train_dataset), num_replicas=config.world_size, rank=config.rank)
+        train_loader = DataLoader(train_dataset, batch_size=config.batch_size, collate_fn=default_collate, sampler=sampler_train)
         return train_loader
     return train_dataset

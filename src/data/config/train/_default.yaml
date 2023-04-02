@@ -12,11 +12,13 @@ eval_step: "1e"
 eval_delay: 0
 # if true, save the model after validation
 # otherwise, only store the ever-best performance model
-save_at_eval: False
+save_at_eval: false
 # if the metric on dev set is worse than the best record for x times, stop training
-# early_stop_count: 5
+# early_stop_patience: 5
 # gradient accumulation
 accumulate_step: 1
+# Stop training when the evaluation results is inferior to the best one for ? times.
+early_stop_patience: 8
 
 # mixed precision
 fp16: false

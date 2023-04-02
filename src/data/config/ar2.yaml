@@ -21,5 +21,5 @@ index:
   index_type: Flat
 
 eval:
-  eval_posting_length: True
+  eval_posting_length: true
 

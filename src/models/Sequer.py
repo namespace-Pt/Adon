@@ -16,13 +16,10 @@ class Sequer(BaseGenerativeModel):
         if config.get("code_size", 0) > 0:
             plm.resize_token_embeddings(config.vocab_size + config.code_size)
 
-        if config.code_type == "UniCOIL-weight-align":
-            self.logger.info("initializing new tokens embeddings...")
-            new_token_embeds = np.load(os.path.join(config.cache_root, "codes", "UniCOIL-weight-align", config.code_tokenizer, str(config.code_length), "new_token_embeds.npy"))
-            plm.encoder.embed_tokens.weight.data[-config.code_size:] = torch.tensor(new_token_embeds)
-
         self.plm = plm
-        self.scorer = torch.nn.Linear(plm.config.d_model, 1)
+
+        if config.get("rank_type") == "eos":
+            self.scorer = torch.nn.Linear(plm.config.d_model, 1)
 
 
     def _prepare_decoder_inputs(self, text=None, text_code=None):
@@ -63,7 +60,7 @@ class Sequer(BaseGenerativeModel):
         """
         outputs = self.plm(decoder_input_ids=text_token_id, output_hidden_states=True, **kwargs) # *, L, V
         token_embedding = outputs.decoder_hidden_states[-1]    # *, L, D
-        logits = outputs.logits
+        logits = torch.log_softmax(outputs.logits, dim=-1)
         # target_token_id = text_token_id[:, 1:]
         # token_score = logits.gather(index=target_token_id.unsqueeze(-1), dim=-1).squeeze(-1) # *, L - 1 
         return logits, token_embedding
@@ -96,7 +93,7 @@ class Sequer(BaseGenerativeModel):
         loss = 0
 
         if "gen" in self.config.train_scheme:
-            logits = logits.unflatten(0, (B, M))[:, 0]    # B, L, V
+            gen_logits = logits.unflatten(0, (B, M))[:, 0]    # B, L, V
             pos_text_token_id = text_token_id.unflatten(0, (B, M))[:, 0]  # B, L
             pos_text_attn_mask = text_attn_mask.unflatten(0, (B, M))[:, 0]    # B, L
 
@@ -107,12 +104,18 @@ class Sequer(BaseGenerativeModel):
             labels_mask[:, :-1] = pos_text_attn_mask[:, 1:]     # B, L
             # the pad token will be ignored in computing loss
             labels = labels.masked_fill(~labels_mask.bool(), -100)
-            loss += F.cross_entropy(logits.flatten(0, 1), labels.view(-1), ignore_index=-100)
+            loss += F.nll_loss(gen_logits.flatten(0, 1), labels.view(-1), ignore_index=-100)
 
         if "contra" in self.config.train_scheme:
-            valid_token_length = text_attn_mask.sum(dim=-1).long() - 1
-            eos_embedding = token_embedding[range(valid_token_length.shape[0]), valid_token_length]
-            score = self.scorer(eos_embedding).squeeze(-1)
+            if self.config.rank_type == "eos":
+                valid_token_length = text_attn_mask.sum(dim=-1).long() - 1
+                eos_embedding = token_embedding[range(valid_token_length.shape[0]), valid_token_length]
+                score = self.scorer(eos_embedding).squeeze(-1)
+            
+            elif self.config.rank_type == "prob":
+                score = logits.gather(dim=-1, index=text_token_id[:, 1:, None]).squeeze(-1)   # B*N, L-1 
+                score = score.sum(-1)
+
             # cross entropy
             label = torch.zeros(B, device=self.config.device, dtype=torch.long)
             score = score.view(B, M)
@@ -126,11 +129,15 @@ class Sequer(BaseGenerativeModel):
 
         text_token_id, text_attn_mask = self._prepare_decoder_inputs(x.get("text"), x.get("text_code"))
 
-        _, token_embedding = self._compute_logits(text_token_id, **x["query"], encoder_outputs=x.get("encoder_outputs"))
+        logits, token_embedding = self._compute_logits(text_token_id, **x["query"], encoder_outputs=x.get("encoder_outputs"))
 
         # always use eos token to rank
-        valid_token_length = text_attn_mask.sum(dim=-1).long() - 1  # B
-        eos_embedding = token_embedding[range(valid_token_length.shape[0]), valid_token_length]
-        score = self.scorer(eos_embedding).squeeze(-1)
+        if self.config.rank_type == "eos":
+            valid_token_length = text_attn_mask.sum(dim=-1).long() - 1  # B
+            eos_embedding = token_embedding[range(valid_token_length.shape[0]), valid_token_length]
+            score = self.scorer(eos_embedding).squeeze(-1)
+        elif self.config.rank_type == "prob":
+            logits = logits.log_softmax(-1) # B*N, L
+            score = logits.gather(dim=-1, index=text_token_id[:, 1:]).sum(-1)   # B
         return score
 

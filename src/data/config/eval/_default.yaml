@@ -14,5 +14,3 @@ parallel: text
 # the batch size fed to the loader_eval
 eval_batch_size: 100
 
-num_worker: 0
-

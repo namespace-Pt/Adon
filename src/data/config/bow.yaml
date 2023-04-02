@@ -3,8 +3,8 @@ defaults:
   - _default
   - base: NQ
   - model: generative
-  - index: trie
-  - train: nmt
+  - index: wordset
+  - train: neg
   - eval: retrieve
   # add _self_ here so that the following arguments can be rewritten
   - _self_
@@ -13,23 +13,27 @@ base:
   plm: t5
 
 model:
-  model_type: genre
+  model_type: bow
 
-  code_type: title
+  code_type: words-comma
   code_length: 34
+  code_size: 0
 
   nbeam: 10
   return_code: true
 
-index:
-  index_type: trie
-
 train:
+  # only query-pos pair
+  hard_neg_type: none
+  epoch: 50
+
   learning_rate: 1e-3
   scheduler: linear
-  batch_size: 100
+  batch_size: 200
+  eval_delay: 20e
+
+  main_metric: MRR@10
 
 eval:
   parallel: query
-  hits: 10
-
+  hits: 100

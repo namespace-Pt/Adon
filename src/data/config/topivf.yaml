@@ -45,7 +45,7 @@ train:
   scheduler: linear
 
 eval:
-  eval_posting_length: True
+  eval_posting_length: true
   verifier_type: pq
   verifier_src: DistillVQ_d-RetroMAE
   verifier_index: OPQ96,PQ96x8

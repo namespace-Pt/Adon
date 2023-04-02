@@ -16,13 +16,13 @@ model:
   embedding_src: RetroMAE
 
   # dynamically update ivf assignments
-  train_ivf_assign: False
+  train_ivf_assign: false
   # dynamically update pq assignments
-  train_pq_assign: False
+  train_pq_assign: false
   # train query encoder together with the index
-  train_encoder: False
+  train_encoder: false
   # freeze pq centroids, only update IVF centroids
-  freeze_pq: False
+  freeze_pq: false
 
 index:
   index_type: OPQ96,PQ96x8
@@ -41,4 +41,4 @@ train:
   scheduler: linear
 
 eval:
-  eval_posting_length: True
+  eval_posting_length: true

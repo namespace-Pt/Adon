@@ -15,7 +15,6 @@ class SPLADEv2(BaseSparseModel):
             self._step = 0
             self._lambda_warmup_step = config.lambda_warmup_step // config.world_size
 
-        self._rebuild_index = True
         self._skip_special_tokens = False
         self._text_length = self.config.text_decode_k
         self._query_length = self.config.query_decode_k

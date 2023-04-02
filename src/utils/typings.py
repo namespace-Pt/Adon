@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
-from typing import Any, Callable, Union, Literal, Optional, Mapping
+from typing import Any, Callable, Union, Literal, Optional, Mapping, Iterable
 
 DEVICE = Union[int,Literal["cpu"]]
 

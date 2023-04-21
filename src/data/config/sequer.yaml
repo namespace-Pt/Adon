@@ -4,13 +4,14 @@ defaults:
   - base: NQ
   - model: ranker
   - index: trie
-  - train: neg
-  - eval: retrieve
+  - mode: train
+  - extra: code
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
 base:
   plm: t5
+  parallel: query
 
 model:
   model_type: sequer
@@ -23,18 +24,15 @@ model:
   beam_trsd: 0
   trsd_start_len: 3
 
-  return_code: true
-  code_type: words-comma
-  code_tokenizer: t5
-  code_length: 34
   return_prefix_mask: true
 
-train:
+mode:
   batch_size: 32
   learning_rate: 3e-5
-  hard_neg_type: ANCE
-  hard_neg_num: 10
+  neg_type: ANCE
+  neg_num: 10
   main_metric: Recall@10
 
-eval:
-  parallel: query
+extra:
+  code_type: words_comma
+  code_length: 34

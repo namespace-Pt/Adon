@@ -4,8 +4,7 @@ defaults:
   - base: MSMARCO-passage
   - model: sparse
   - index: invhit
-  - train: neg
-  - eval: retrieve
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -23,12 +22,11 @@ index:
   # what percentile of the inverted lists are kept
   posting_prune: 0.996
 
-train:
-  hard_neg_num: 7
+mode:
+  neg_num: 7
   enable_distill: bi
   distill_src: RetroMAE
 
-eval:
   eval_posting_length: true
 
   verifier_type: pq

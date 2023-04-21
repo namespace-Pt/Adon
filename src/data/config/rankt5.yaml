@@ -3,8 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: ranker
-  - train: neg
-  - eval: rerank
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -13,13 +12,12 @@ base:
 
 model:
   model_type: rankt5
-  return_pair: true
   ranking_token: 32089 # <extra_id_10>
 
   query_prefix: "Query:"
   text_prefix: "Text:"
 
-train:
+mode:
   batch_size: 16
   learning_rate: 1e-4
-  hard_neg_num: 7
+  neg_num: 7

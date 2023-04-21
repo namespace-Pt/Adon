@@ -7,6 +7,7 @@ from pathlib import Path
 from omegaconf import OmegaConf
 @hydra.main(version_base=None, config_path="../data/config/", config_name=f"script/{Path(__file__).stem}")
 def get_config(hydra_config: OmegaConf):
+    print(hydra_config)
     config._from_hydra(hydra_config)
 
 

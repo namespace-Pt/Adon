@@ -4,20 +4,17 @@ defaults:
   - base: MSMARCO-passage
   - model: sparse
   - index: bm25
-  - eval: retrieve
+  - mode: eval
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
 base:
-  mode: eval
   device: cpu
+  plm: bert
+  eval_batch_size: 1
 
 model:
   model_type: bm25
-  save_encode: true
 
 index:
   pretokenize: false
-
-eval:
-  eval_batch_size: 1

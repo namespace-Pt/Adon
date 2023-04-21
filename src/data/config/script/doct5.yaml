@@ -6,21 +6,18 @@ defaults:
   - _default
   # add group package so the default list can be overriden from cli by name
   - /base@_group_: NQ
-  - /eval@_group_: _default
+  - /mode@_group_: script
   - _self_
 
 base:
-  # default to evaluation mode
-  mode: script
   plm: doct5
+  eval_batch_size: 50
 
-eval_batch_size: 50
 # sometimes we want to tokenize the generated queries with another plm and save the results
 dest_plm: t5
-
 # how many queries to generate for each document
 query_per_doc: 10
 # load previously stored memmap file?
 load_encode: false
-
+# how many threads to use?
 tokenize_thread: 32

@@ -4,12 +4,9 @@ defaults:
   - base: MSMARCO-passage
   - model: sparse
   - index: invhit
-  - eval: retrieve
+  - mode: eval
   # add _self_ here so that the following arguments can be rewritten
   - _self_
-
-base:
-  mode: eval
 
 model:
   model_type: ivf
@@ -18,7 +15,6 @@ model:
 
   vq_src: RetroMAE
   vq_index: IVF10000,PQ64x8
-
   embedding_src: RetroMAE
   return_embedding: true
 

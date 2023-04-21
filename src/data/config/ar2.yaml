@@ -4,13 +4,11 @@ defaults:
   - base: MSMARCO-passage
   - model: dense
   - index: faiss
-  - eval: retrieve
+  - mode: eval
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
 base:
-  # default to evaluation mode
-  mode: eval
   text_col: [1, 2]
 
 model:
@@ -20,6 +18,6 @@ model:
 index:
   index_type: Flat
 
-eval:
+mode:
   eval_posting_length: true
 

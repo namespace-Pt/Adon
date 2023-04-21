@@ -48,8 +48,7 @@ def init_query_and_qrel(query_path:str, qrel_path:str, cache_dir:str, tid2index:
         try:
             query_id, _, positive_text_id, _ = line.strip().split()
         except:
-            print(line)
-            raise
+            raise ValueError(f"Invalid format: {line}")
         if query_id in valid_queries:
             pass
         else:
@@ -58,15 +57,27 @@ def init_query_and_qrel(query_path:str, qrel_path:str, cache_dir:str, tid2index:
     print("valid query number: {}".format(len(valid_queries)))
 
     qid2index = {}
-    valid_query_path = ".".join([*query_path.split(".")[:-1], "small", "tsv"])
-    with open(query_path, "r", encoding="utf-8") as f:
-        with open(valid_query_path, "w", encoding="utf-8") as g:
-            for i, line in enumerate(tqdm(f, desc="Removing Missing Queries", ncols=100, leave=False)):
-                query_id = line.split('\t')[0]
-                if query_id not in valid_queries:
-                    continue
-                qid2index[query_id] = len(qid2index)
-                g.write(line)
+    has_invalid = False
+    tmp_query_path = ".".join([*query_path.split(".")[:-1], "tmp", "tsv"])
+    
+    with open(query_path, "r", encoding="utf-8") as f, \
+        open(tmp_query_path, "w", encoding="utf-8") as g:
+        for i, line in enumerate(tqdm(f, desc="Removing Missing Queries", ncols=100, leave=False)):
+            query_id = line.split('\t')[0]
+            if query_id not in valid_queries:
+                has_invalid = True
+                continue
+            qid2index[query_id] = len(qid2index)
+            g.write(line)
+
+    if has_invalid:
+        # backup queries that appear in the query file but not in the qrel file
+        backup_query_path = ".".join([*query_path.split(".")[:-1], "backup", "tsv"])
+        print(f"There are queries that appear in the query file but not in the qrel file! The original query file is saved at {backup_query_path}")
+        os.rename(query_path, backup_query_path)
+    else:
+        os.remove(query_path)
+    os.rename(tmp_query_path, query_path)
 
     qrels = []
     positives = defaultdict(list)
@@ -229,4 +240,4 @@ if __name__ == "__main__":
             qrel_path = os.path.join(data_dir, f"qrels.{query_set}.tsv")
             qid2index = init_query_and_qrel(query_path, qrel_path, os.path.join(cache_dir, "query", query_set), tid2index)
             if config.pretokenize:
-                tokenize_to_memmap(os.path.join(data_dir, f"queries.{query_set}.small.tsv"), os.path.join(cache_dir, "query", query_set), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)
+                tokenize_to_memmap(os.path.join(data_dir, f"queries.{query_set}.tsv"), os.path.join(cache_dir, "query", query_set), len(qid2index), config.max_query_length, tokenizer, tokenizer_type, config.tokenize_thread, is_query=True)

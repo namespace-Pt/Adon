@@ -4,37 +4,32 @@ defaults:
   - base: NQ
   - model: generative
   - index: trie
-  - train: neg
-  - eval: retrieve
+  - mode: train
+  - extra: code
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
 base:
   plm: t5
+  parallel: query
 
 model:
   model_type: dsi
-
-  code_type: ANCE-hier
-  code_length: 10
-  code_size: 100
-
   nbeam: 10
-  return_code: true
 
 train:
   # only query-pos pair
-  hard_neg_type: none
+  neg_type: none
   epoch: 80
 
   learning_rate: 1e-3
   scheduler: linear
-  batch_size: 100
+  batch_size: 200
   eval_delay: 40e
 
   main_metric: MRR@10
 
-eval:
-  parallel: query
-  hits: 10
-
+extra:
+  code_type: ANCE_hier
+  code_length: 10
+  code_size: 100

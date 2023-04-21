@@ -1,7 +1,0 @@
-defaults:
-  - _default
-  - _self_
-
-candidate_type_train: none
-candidate_num_train: 50
-loader_train: pair

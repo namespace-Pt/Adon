@@ -12,3 +12,6 @@ plm: bert-chinese
 
 text_col: [1]
 text_col_sep: "sep"
+
+eval_metric: [mrr, map, precision, ndcg, recall]
+eval_metric_cutoff: [5, 10, 20, 30]

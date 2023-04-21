@@ -3,8 +3,7 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: ranker
-  - train: neg
-  - eval: rerank
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -15,5 +14,6 @@ model:
   model_type: colbert
   token_dim: 128
 
-train:
+mode:
   learning_rate: 3e-5
+  eval_mode: rerank

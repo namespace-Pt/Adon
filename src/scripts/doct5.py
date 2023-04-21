@@ -25,7 +25,7 @@ def main(config:Config):
     max_length = config.query_length
     query_per_doc = config.query_per_doc
 
-    doct5_path = os.path.join(config.data_root, config.dataset, "queries.doct5.small.tsv")
+    doct5_path = os.path.join(config.data_root, config.dataset, "queries.doct5.tsv")
     cache_dir = os.path.join(config.cache_root, "dataset", "query", "doct5")
     mmp_path = os.path.join(cache_dir, config.plm_tokenizer, "token_ids.mmp")
     makedirs(mmp_path)

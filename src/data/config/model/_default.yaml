@@ -5,22 +5,20 @@ model_type: null
 load_ckpt: null
 # the checkpoint path to save
 save_ckpt: best
-# use the debug mode (will train 2 steps and encode 10 steps)
-debug: false
 
 # load the encoded cache
 load_encode: false
-# load the existing retrieval result
-load_result: false
 # save the encoded result
 save_encode: false
+load_text_encode: false
+load_query_encode: false
+
+# load the existing retrieval result
+load_result: false
 # save the model after main function
 save_model: false
 # save the retrieval result together with the score of each retrieved document
 save_score: false
+# file name for the retrieval results
+save_res: retrieval_result
 
-# return token_type_ids from PLM tokenizer?
-return_type_id: false
-
-# separate query and document encoder?
-untie_encoder: false

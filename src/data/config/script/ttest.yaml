@@ -6,13 +6,9 @@ defaults:
   - _default
   # add group package so the default list can be overriden from cli by name
   - /base@_group_: MSMARCO-passage
-  - /eval@_group_: _default
+  - /mode@_group_: script
   - _self_
-
-base:
-  # default to evaluation mode
-  mode: script
 
 x_model: ???
 y_model: ???
-ttest_metric: ["MRR@10","Recall@10"]
+ttest_metric: [MRR@10, Recall@10]

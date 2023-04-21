@@ -105,6 +105,9 @@ def train(model, loaders):
     # add progress callback first to avoid extra 1 step tqdm logging
     trainer.add_callback(AdonProgressCallback)
     trainer.add_callback(AdonFlowCallback)
+
+    # NOTE: reset the verbosity level, preventing warning of transformers
+    # transformers.logging.set_verbosity_error()
     trainer.train()
 
 
@@ -319,7 +322,7 @@ class AdonTrainer(Trainer):
                 else:
                     self.model.save()
                 # save to log file
-                self.model.log_result(step=self.state.epoch)
+                self.model.log_result(epoch=self.state.epoch)
 
             self.control.early_stop_patience_counter = 0
         

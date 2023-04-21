@@ -1,24 +1,27 @@
-loader_train: none
+defaults:
+  - _eval
+mode: train
+
+# default to use negative 
+loader_train: neg
 # query set for training
-train_set: ["train"]
+train_set: [train]
 
 epoch: 20
 batch_size: 32
 
 main_metric: Recall@10
 # interval of testing the model performance
-eval_step: "1e"
+eval_step: 1e
 # donot test the model performance before eval_delay steps
 eval_delay: 0
 # if true, save the model after validation
 # otherwise, only store the ever-best performance model
 save_at_eval: false
-# if the metric on dev set is worse than the best record for x times, stop training
-# early_stop_patience: 5
 # gradient accumulation
 accumulate_step: 1
 # Stop training when the evaluation results is inferior to the best one for ? times.
-early_stop_patience: 8
+early_stop_patience: 5
 
 # mixed precision
 fp16: false
@@ -34,6 +37,8 @@ warmup_ratio: 0.1
 warmup_steps: 0
 max_grad_norm: 0
 
+neg_num: 1
+neg_type: BM25
 
 enable_inbatch_negative: true
 # if true, gather all the embeddings across processes in distributed training

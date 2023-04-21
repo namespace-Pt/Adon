@@ -4,48 +4,38 @@ defaults:
   - base: MSMARCO-passage
   - model: sparse
   - index: invhit
-  - train: neg
-  - eval: retrieve
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
+
+base:
+  eval_batch_size: 500
 
 model:
   model_type: topivf
 
-  return_embedding: true
-  embedding_src: RetroMAE
+  query_gate_k: 20
 
   vq_src: RetroMAE
   vq_index: IVF10000,PQ64x8
 
-  # how many topic postings to scan
-  query_gate_k: 20
-  # freeze pq centroids, only update IVF centroids
-  freeze_pq: false
-  # how to quantize ivf
-  quantize_ivf: fixed
-  # train the query encoder?
-  train_encoder: false
+  embedding_src: RetroMAE
+  return_embedding: true
 
-  save_encode: true
+  load_ckpt: none
 
-train:
-  # scale the ivf loss to pq loss?
-  scale_ivf_loss: true
+  enable_commit_loss: true
 
-  distill_src: RetroMAE
-  enable_distill: bi
-
+mode:
   epoch: 50
   batch_size: 128
 
-  learning_rate: 1e-5
-  learning_rate_pq: 1e-4
-  learning_rate_ivf: 1e-4
+  learning_rate: 1e-4
   scheduler: linear
 
-eval:
+  hits: 0
   eval_posting_length: true
+
   verifier_type: pq
   verifier_src: DistillVQ_d-RetroMAE
   verifier_index: OPQ96,PQ96x8

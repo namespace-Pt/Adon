@@ -4,8 +4,7 @@ defaults:
   - base: MSMARCO-passage
   - model: dense
   - index: faiss
-  - train: neg
-  - eval: retrieve
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -18,10 +17,10 @@ model:
 index:
   index_type: Flat
 
-train:
+mode:
   batch_size: 32
-  hard_neg_num: 7
-  hard_neg_type: DPR
+  neg_num: 7
+  neg_type: DPR
   learning_rate: 3e-5
   scheduler: linear
 

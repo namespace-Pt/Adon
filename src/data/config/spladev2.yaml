@@ -3,34 +3,33 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: impact-tok
-  - train: neg
-  - eval: retrieve
+  - index: impact
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
-
-base:
-  plm: distilbert
 
 model:
   model_type: spladev2
   save_encode: true
 
+  text_decode_k: 128
+  query_decode_k: 128
   text_lambda: 1e-2
-  query_lambda: 3e-2
-  text_decode_k: 256
-  query_decode_k: 64
+  query_lambda: 1e-2
+
 
 index:
   return_first_mask: false
+  load_index: false
+  save_index: false
 
-train:
+mode:
   learning_rate: 2e-5
   scheduler: linear
-  hard_neg_num: 7
+  batch_size: 16
+  neg_num: 7
   lambda_warmup_step: 0
   eval_step: 5e
 
-eval:
   eval_posting_length: true
   eval_flops: true

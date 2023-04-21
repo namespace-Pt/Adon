@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from .DSI import DSI
+from transformers import AutoTokenizer
+
 
 class BOW(DSI):
     def __init__(self, config):
@@ -51,20 +53,29 @@ class BOW(DSI):
             # in case there are multiple codes for one text (config.permute_code > 0)
             encoder_outputs = self.plm.encoder(**x["query"])
             query_attn_mask = x["query"]["attention_mask"]
-            M = text_code.shape[1]
+            B, M = text_code.shape[:2]
             for k, v in encoder_outputs.items():
                 encoder_outputs[k] = v.repeat_interleave(M, 0)
-            query_attn_mask = query_attn_mask.repeat_interleave(M, 0)   # M*B, L
+            query_attn_mask = query_attn_mask.repeat_interleave(M, 0)   # B*M, L
 
-            text_code = text_code.flatten(0,1)  # M*B, CL
+            text_code = text_code.flatten(0,1)  # B*M, CL
             # the code has a leading 0, shift left one position so t5 can shift it back
             # default to -1
             labels = torch.zeros_like(text_code) - 1
             labels[:, :-1] = text_code[:, 1:]
             # replace the padding code with the -100 (ignored when computing loss)
             labels = labels.masked_fill(labels == -1, -100)
-            loss = self.plm(attention_mask=query_attn_mask, encoder_outputs=encoder_outputs, labels=labels).loss
+            logits = self.plm(attention_mask=query_attn_mask, encoder_outputs=encoder_outputs, labels=labels).logits    # B*M, CL, V
 
+            # ignore_index defaults to -100
+            loss = nn.functional.cross_entropy(logits.flatten(0,1), labels.view(-1), reduction="none").view(B, M, -1).mean(-1) # B, M
+            # sum
+            if self.config.reduce_code == "mean":
+                loss = loss.mean()
+            elif self.config.reduce_code == "min":
+                loss = loss.min(-1).values.mean()
+            else:
+                raise NotImplementedError(f"Reduction type {self.config.reduce_code} is not implemented!")
         return loss
     
     def generate_code(self, loaders):
@@ -78,7 +89,7 @@ class BOW(DSI):
 
         if self.config.get("sort_code"):
             from tqdm import tqdm
-            from utils.index import GreedyKeywordSorter
+            from utils.index import BeamDecoder
             from utils.data import prepare_train_data
             index = self.index(loaders).index
 
@@ -86,7 +97,7 @@ class BOW(DSI):
             # set necessary attributes to enable loader_train
             self.config.loader_train = "neg"
             self.config.train_set = [self.config.eval_set]
-            self.config.hard_neg_type = "none"
+            self.config.neg_type = "none"
             self.config.batch_size = self.config.eval_batch_size
 
             loader_train = prepare_train_data(self.config, text_dataset, return_dataloader=True)
@@ -113,7 +124,8 @@ class BOW(DSI):
                 mode="r+"
             ).reshape(len(loader_train.dataset), self.config.code_length)
 
-            greedy_sorter = GreedyKeywordSorter()
+            sorter = BeamDecoder()
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
 
             start_idx = 0
             for i, x in enumerate(tqdm(loader_train, leave=False, ncols=100)):
@@ -126,29 +138,46 @@ class BOW(DSI):
                 B = query["input_ids"].shape[0]
                 end_idx = start_idx + B
 
-                greedy_sorter.search(
-                    model=self.plm,
+                sorter.search(
                     text_indices=x["text_idx"].squeeze(1).numpy(),
-                    wordset_index=index,
-                    **query, 
+                    model=self.plm, 
+                    nbeam=self.config.nbeam, 
+                    max_new_tokens=self.config.code_length - 1, 
+                    constrain_index=index,
+                    tokenizer=tokenizer,
+                    # forbid early stop as we must generate the entire sequence
+                    do_early_stop=False,
+                    **query,
                     encoder_outputs=encoder_outputs
                 )
-                res = greedy_sorter.res
+                res = sorter.beams
 
                 # assign query_codes
                 for j, y in enumerate(res):
-                    query_codes[qrel_idx[j], :len(y)] = y
+                    # there maybe multiple beams for one input, only record the highest scored one
+                    query_codes[qrel_idx[j], :len(y[0])] = y[0]
 
                 start_idx = end_idx
                 if self.config.debug:
                     if i > 2:
                         break
+            
+            if self.config.is_main_proc:
+                same_count = 0
+                text_codes = text_dataset.text_codes
+                for qrel in loader_train.dataset.qrels:
+                    qrel_idx, query_set_idx, query_idx, text_idx = qrel
+                    query_code = query_codes[qrel_idx]
+                    text_code = text_codes[text_idx]
+                    if (query_code == text_code).all():
+                        same_count += 1
+            
+                self.logger.info(f"{same_count}/{len(query_codes)} query codes are identical to the text codes!")
 
         else:
             if self.config.code_type == "chat":
                 import multiprocessing as mp
                 from utils.util import _get_chatgpt_code
-                from transformers import AutoTokenizer
 
                 # the code is bind to the code_tokenizer
                 code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")

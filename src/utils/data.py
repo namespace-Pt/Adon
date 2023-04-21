@@ -86,10 +86,18 @@ class TextDataset(BaseDataset):
 
         if config.get("return_embedding"):
             self.text_embeddings = np.memmap(
-                os.path.join(config.cache_root, "encode", config.embedding_src, "text_embeddings.mmp"),
+                os.path.join(config.cache_root, "encode", config.embedding_src, "text", config.text_type, "text_embeddings.mmp"),
                 mode="r",
                 dtype=np.float32
             ).reshape(self.text_num, -1)
+
+        if config.get("enable_distill") == "bi":
+            self.text_teacher_embeddings = np.memmap(
+                os.path.join(config.cache_root, "encode", config.distill_src, "text", self.config.text_type, "text_embeddings.mmp"),
+                mode="r",
+                dtype=np.float32
+            ).reshape(self.text_num, -1)
+
 
     def __len__(self) -> int:
         return self.text_num
@@ -124,11 +132,11 @@ class TextDataset(BaseDataset):
             dictionary containing one piece of document
         """
         if self.config.data_format == "memmap":
-            if isinstance(index, int):
+            if isinstance(index, int) or isinstance(index, np.int_):
                 text_token_id = self.text_token_ids[index]
                 text = self._prepare_for_model(text_token_id, self.config.text_length)
             
-            elif isinstance(index, np.ndarray) or isinstance(index, list):
+            elif isinstance(index, Iterable):
                 input_ids = []
                 attention_mask = []
                 text_token_ids = self.text_token_ids[index]
@@ -146,7 +154,7 @@ class TextDataset(BaseDataset):
                 raise NotImplementedError(f"Invalid index type {type(index)}")
 
         elif self.config.data_format == "raw":
-            if isinstance(index, int):
+            if isinstance(index, int) or isinstance(index, np.int_):
                 text = self._tokenize(self.texts[index], self.config.text_length)
             
             elif isinstance(index, np.ndarray) or isinstance(index, list):
@@ -187,6 +195,10 @@ class TextDataset(BaseDataset):
                     text_first_mask[i] = 1
                     token_set.add(token_id)
             return_dict["text_first_mask"] = text_first_mask
+
+        if self.config.get("enable_distill") == "bi":
+            return_dict["text_teacher_embedding"] = self.text_teacher_embeddings[index]
+            
         return return_dict
 
 
@@ -215,7 +227,7 @@ class QueryDataset(BaseDataset):
         elif config.data_format == "raw":
             queries = []
             load_query = load_query.split("-")[0]
-            with open(os.path.join(config.data_root, config.dataset, f"queries.{load_query}.small.tsv")) as f:
+            with open(os.path.join(config.data_root, config.dataset, f"queries.{load_query}.tsv")) as f:
                 for line in f:
                     query = line.strip().split("\t")[1]
                     queries.append(query)
@@ -224,14 +236,14 @@ class QueryDataset(BaseDataset):
 
         if config.get("return_embedding"):
             self.query_embeddings = np.memmap(
-                os.path.join(config.cache_root, "encode", config.embedding_src, query_set, "query_embeddings.mmp"),
+                os.path.join(config.cache_root, "encode", config.embedding_src, "query", query_set, "query_embeddings.mmp"),
                 mode="r",
                 dtype=np.float32
             ).reshape(self.query_num, -1)
 
         if config.get("enable_distill") == "bi":
             self.query_teacher_embeddings = np.memmap(
-                os.path.join(config.cache_root, "encode", config.distill_src, query_set, "query_embeddings.mmp"),
+                os.path.join(config.cache_root, "encode", config.distill_src, "query", query_set, "query_embeddings.mmp"),
                 mode="r",
                 dtype=np.float32
             ).reshape(self.query_num, 768)
@@ -261,7 +273,7 @@ class QueryDataset(BaseDataset):
             dictionary containing one piece of query
         """
         if self.config.data_format == "memmap":
-            if isinstance(index, int):
+            if isinstance(index, int) or isinstance(index, np.int_):
                 query_token_id = self.query_token_ids[index]
                 query = self._prepare_for_model(query_token_id, self.config.query_length)
 
@@ -280,7 +292,7 @@ class QueryDataset(BaseDataset):
                 }
 
         elif self.config.data_format == "raw":
-            if isinstance(index, int):
+            if isinstance(index, int) or isinstance(index, np.int_):
                 query = self._tokenize(self.queries[index], self.config.query_length)
             
             elif isinstance(index, np.ndarray) or isinstance(index, list):
@@ -295,6 +307,17 @@ class QueryDataset(BaseDataset):
         if self.config.get("return_embedding"):
             return_dict["query_embedding"] = self.query_embeddings[index].astype(np.float32)
         
+        if self.config.get("enable_distill") == "bi":
+            return_dict["query_teacher_embedding"] = self.query_embeddings[index].astype(np.float32)
+        
+        if self.config.get("return_sep_mask"):
+            query_token_id = np.array(query["input_ids"])
+            sep_pos = ((query_token_id == self.cls_token_id) + (query_token_id == self.sep_token_id)).astype(bool)
+            query_sep_mask = np.array(query["attention_mask"], dtype=np.int64)
+            # mask [SEP] and [CLS]
+            query_sep_mask[sep_pos] = 0
+            return_dict["query_sep_mask"] = query_sep_mask
+
         return return_dict
 
 
@@ -307,15 +330,6 @@ class TrainDataset(BaseDataset):
         self.text_num = text_dataset.text_num
         self.query_num = sum([dataset.query_num for dataset in query_datasets])
         
-        if config.get("enable_distill") == "bi":
-            self.text_teacher_embeddings = np.memmap(
-                os.path.join(config.cache_root, "encode", config.distill_src, "text_embeddings.mmp"),
-                mode="r",
-                dtype=np.float32
-            ).reshape(self.text_num, -1)
-            # there would be multiple teacher embeddings, each corresponding to a query set
-            self.query_teacher_embeddings = []
-        
         if config.get("return_query_code"):
             self.query_codes = []
 
@@ -325,19 +339,12 @@ class TrainDataset(BaseDataset):
             query_set = query_dataset.query_set
 
             qrel_path = os.path.join(self.cache_dir, "query", query_set, "qrels.pkl")
-            negative_path = os.path.join(self.cache_dir, "query", query_set, f"negatives_{config.hard_neg_type}.pkl")
+            negative_path = os.path.join(self.cache_dir, "query", query_set, f"negatives_{config.neg_type}.pkl")
             qrel, negative = self.init_training(i, qrel_path, negative_path)
             # each qrel now have three elements: (query_set_idx, query_idx, text_idx)
             qrels.extend(qrel)
             # negatives are two-layered dictionary, the first layer for different query sets, the second for queries
             negatives[i] = negative
-
-            if config.get("enable_distill") == "bi":
-                self.query_teacher_embeddings.append(np.memmap(
-                    os.path.join(config.cache_root, "encode", config.distill_src, query_set, "query_embeddings.mmp"),
-                    mode="r",
-                    dtype=np.float32
-                ).reshape(query_dataset.query_num, -1))
             
             if config.get("return_query_code"):
                 self.query_codes.append(np.memmap(
@@ -348,7 +355,7 @@ class TrainDataset(BaseDataset):
         
         if self.config.get("permute_code") and self.config.permute_code > 0:
             assert config.code_sep is not None
-            assert config.hard_neg_type == "none"
+            assert config.neg_type == "none"
             tokenizer = AutoTokenizer.from_pretrained(os.path.join(config.plm_root, config.code_tokenizer))
             code_sep_id = tokenizer.convert_tokens_to_ids(config.code_sep)
             self.code_sep_id = code_sep_id
@@ -356,7 +363,7 @@ class TrainDataset(BaseDataset):
         
         if self.config.get("elastic_ce"):
             assert self.config.return_code and self.config.code_sep != " "
-            assert config.hard_neg_type == "none"
+            assert config.neg_type == "none"
             tokenizer = AutoTokenizer.from_pretrained(os.path.join(config.plm_root, config.code_tokenizer))
             code_sep_id = tokenizer.convert_tokens_to_ids(config.code_sep)
             self.code_sep_id = code_sep_id
@@ -378,13 +385,13 @@ class TrainDataset(BaseDataset):
         for i, x in enumerate(qrels):
             qrels[i] = (i, query_set_idx,) + x
 
-        if self.config.hard_neg_type == "random":
+        if self.config.neg_type == "random":
             all_positives = set([x[1] for x in qrels])
             sample_range = list(set(range(self.text_num)) - all_positives)
             negatives = defaultdict(lambda:sample_range)
             new_qrels = qrels
 
-        elif self.config.hard_neg_type == "none":
+        elif self.config.neg_type == "none":
             negatives = {}
             new_qrels = qrels
 
@@ -392,8 +399,8 @@ class TrainDataset(BaseDataset):
             negatives = load_pickle(negative_path)
             for k, v in negatives.items():
                 neg_num = len(v)
-                if neg_num < self.config.hard_neg_num:
-                    negatives[k] = v + choices(v, k=self.config.hard_neg_num - neg_num)
+                if neg_num < self.config.neg_num:
+                    negatives[k] = v + choices(v, k=self.config.neg_num - neg_num)
                 else:
                     # only use the first 200 negatives
                     negatives[k] = v[:200]
@@ -418,8 +425,8 @@ class TrainDataset(BaseDataset):
             dictionary containing the query and its positive document and its hard negative documents
         """
         qrel_idx, query_set_idx, query_idx, pos_text_idx = self.qrels[index]
-        if self.config.hard_neg_type != "none":
-            neg_text_idx = sample(self.negatives[query_set_idx][query_idx], self.config.hard_neg_num)
+        if self.config.neg_type != "none":
+            neg_text_idx = sample(self.negatives[query_set_idx][query_idx], self.config.neg_num)
         else:
             neg_text_idx = []
         text_idx = np.array([pos_text_idx] + neg_text_idx)  # 1 + N
@@ -433,25 +440,9 @@ class TrainDataset(BaseDataset):
             "qrel_idx": qrel_idx
         }
 
-        if self.config.get("return_sep_mask"):
-            query = query_outputs["query"]
-            query_token_id = np.array(query["input_ids"])
-            sep_pos = ((query_token_id == self.cls_token_id) + (query_token_id == self.sep_token_id)).astype(bool)
-            query_sep_mask = np.array(query["attention_mask"], dtype=np.int64)
-            # mask [SEP] and [CLS]
-            query_sep_mask[sep_pos] = 0
-            return_dict["query_sep_mask"] = query_sep_mask
-
-        if self.config.get("enable_distill") == "bi":
-            return_dict["query_teacher_embedding"] = self.query_teacher_embeddings[query_set_idx][query_idx].astype(np.float32)
-            return_dict["text_teacher_embedding"] = self.text_teacher_embeddings[text_idx].astype(np.float32)
-        elif self.config.get("enable_distill") == "cross":
-            # TODO
-            pass
-
         if self.config.get("return_prefix_mask"):
             text_code = return_dict["text_code"]
-            text_code_prefix_mask = np.ones((1 + self.config.hard_neg_num, self.config.code_length), dtype=np.int64)
+            text_code_prefix_mask = np.ones((1 + self.config.neg_num, self.config.code_length), dtype=np.int64)
             # ignore the leading 0
             pos_text_code = text_code[0]
             for i in range(1, len(text_code)):
@@ -481,7 +472,7 @@ class TrainDataset(BaseDataset):
         
         if self.config.get("permute_code") is not None and self.config.permute_code > 0:
             # there must be only one text
-            text_code = return_dict["text_code"][0]
+            text_code = return_dict["text_code"][0].tolist()
             text_codewords = []
             word = []
             # get each keyword
@@ -494,7 +485,7 @@ class TrainDataset(BaseDataset):
                 if c == self.code_sep_id:
                     text_codewords.append(word)
                     word = []
-            enhanced_text_code = []
+            enhanced_text_code = [text_code]
             for i in range(self.config.permute_code):
                 order = np.random.permutation(len(text_codewords))
                 # prepend 0 at the head
@@ -536,35 +527,6 @@ class TrainDataset(BaseDataset):
                 if c == self.code_sep_id:
                     del trie[prefix]
                     prefix.clear()
-
-            # # collect first token of each word
-            # first_tokens = []
-            # j = 0
-            # for i, c in enumerate(text_code):
-            #     if j == 0:
-            #         first_tokens.append(c)
-            #         j += 1
-            #     if c == self.eos_token_id:
-            #         break
-            #     elif c == self.code_sep_id:
-            #         j = 0
-
-            # elastic_labels = np.zeros((len(text_code), len(text_code)), dtype=np.int64)
-            # j = 0
-            # for i, c in enumerate(text_code):
-            #     if j == 0:
-            #         elastic_labels[i, :len(first_tokens)] = first_tokens
-            #         if len(first_tokens) < len(text_code):
-            #             elastic_labels[i, len(first_tokens):] = -1
-            #         first_tokens.pop(0)
-            #         j += 1
-
-            #         if c == self.eos_token_id:
-            #             break
-            #     else:
-            #         elastic_labels[i, :] = c
-            #         if c == self.code_sep_id:
-            #             j = 0
 
             return_dict["elastic_label"] = elastic_labels
 
@@ -826,7 +788,7 @@ def prepare_data(config) -> LOADERS:
         sampler_query = Sequential_Sampler(len(query_dataset), num_replicas=1, rank=0)
     loaders["query"] = DataLoader(query_dataset, batch_size=config.eval_batch_size, sampler=sampler_query, num_workers=config.num_worker, collate_fn=default_collate)
 
-    if config.get("loader_rerank") != "none":
+    if config.eval_mode == "rerank":
         # pass in a list with only one element
         rerank_dataset = PairDataset(config, text_dataset, [query_dataset])
         sampler_rerank = Sequential_Sampler(len(rerank_dataset), num_replicas=config.world_size, rank=config.rank)
@@ -855,7 +817,7 @@ def prepare_train_data(config, text_dataset=None, return_dataloader=False):
     elif config.get("loader_train") == "pair":
         train_dataset = PairDataset(config, text_dataset, query_datasets, mode="train")
     else:
-        raise NotImplementedError(f"")
+        raise NotImplementedError(f"Train loader type {config.loader_train} not  implemented!")
     # only used in developing (dev.ipynb)
     if return_dataloader:
         sampler_train = Sequential_Sampler(len(train_dataset), num_replicas=config.world_size, rank=config.rank)

@@ -260,7 +260,7 @@ class DistillVQ(BaseDenseModel):
             if self.config.is_main_proc and self.config.save_encode:
                 os.makedirs(self.text_dir, exist_ok=True)
                 subprocess.run(
-                    f"ln -sf {os.path.join(self.config.cache_root, 'encode', self.config.embedding_src, 'text_embeddings.mmp')} {os.path.join(self.text_dir, 'text_embeddings.mmp')}",
+                    f"ln -sf {os.path.join(self.config.cache_root, 'encode', self.config.embedding_src, 'text', self.config.text_type, 'text_embeddings.mmp')} {os.path.join(self.text_dir, 'text_embeddings.mmp')}",
                     shell=True
                 )
 
@@ -279,7 +279,7 @@ class DistillVQ(BaseDenseModel):
                 dtype=np.float32
             ).reshape(len(loader_query.dataset), self._output_dim)
 
-        elif self.config.load_encode:
+        elif self.config.load_encode or self.config.load_query_encode:
             query_embeddings = np.memmap(
                 readlink(query_embedding_path),
                 mode="r+",
@@ -314,7 +314,7 @@ class DistillVQ(BaseDenseModel):
                 if self.config.is_main_proc and self.config.save_encode:
                     os.makedirs(self.query_dir, exist_ok=True)
                     subprocess.run(
-                        f"ln -sf {os.path.join(self.config.cache_root, 'encode', self.config.embedding_src, self.config.eval_set, 'query_embeddings.mmp')} {os.path.join(self.query_dir, 'query_embeddings.mmp')}",
+                        f"ln -sf {os.path.join(self.config.cache_root, 'encode', self.config.embedding_src, 'query', self.config.eval_set, 'query_embeddings.mmp')} {os.path.join(self.query_dir, 'query_embeddings.mmp')}",
                         shell=True
                     )
 

@@ -5,11 +5,14 @@ defaults:
 index_type: bm25
 
 load_collection: false
+load_index: false
+
+index_thread: 32
 language: eng
 
 # k1 and b used in bm25
 k1: 0.82
 b: 0.68
-
-index_thread: 32
 pretokenize: false
+granularity: null
+

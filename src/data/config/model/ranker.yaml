@@ -1,15 +1,5 @@
 defaults:
   - _default
 
-code_type: none
-# the length of the code in the memmap file (leading 0)
-code_length: 0
-# the extra size of the code
-code_size: 0
-# return pre-defined code for generative models
-return_code: false
-
 # concate query and text as sentence pair
-return_pair: false
-# return prefix overlapping mask when return code
-return_prefix_mask: false
+return_pair: true

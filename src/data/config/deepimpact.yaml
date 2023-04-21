@@ -3,9 +3,8 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: impact-word
-  - train: neg
-  - eval: retrieve
+  - index: impact
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -16,6 +15,9 @@ model:
   model_type: deepimpact
   return_sep_mask: true
 
-train:
-  hard_neg_num: 7
+index:
+  granularity: word
+
+mode:
+  neg_num: 7
   max_grad_norm: 2.0

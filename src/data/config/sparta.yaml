@@ -4,8 +4,7 @@ defaults:
   - base: MSMARCO-passage
   - model: sparse
   - index: invvec
-  - train: neg
-  - eval: retrieve
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -15,11 +14,12 @@ model:
 
 index:
   return_first_mask: false
+  load_index: false
+  save_index: false
 
-train:
-  hard_neg_num: 7
+mode:
+  neg_num: 7
   learning_rate: 3e-5
 
-eval:
   eval_posting_length: true
   eval_flops: true

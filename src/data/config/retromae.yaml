@@ -4,14 +4,11 @@ defaults:
   - base: MSMARCO-passage
   - model: dense
   - index: faiss
-  - train: neg
-  - eval: retrieve
+  - mode: eval
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
 base:
-  mode: eval
-
   plm: retromae_distill
   text_col: [1, 2]
   text_length: 140
@@ -22,11 +19,9 @@ model:
 index:
   index_type: Flat
 
-train:
-  batch_size: 16
-  hard_neg_num: 15
-  learning_rate: 2e-5
-  scheduler: linear
-
-eval:
+mode:
+  # batch_size: 16
+  # neg_num: 15
+  # learning_rate: 2e-5
+  # scheduler: linear
   eval_posting_length: true

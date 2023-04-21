@@ -1,14 +1,12 @@
-defaults:
-  - _default
-
 # evaluation metrics, seperated by colon
 eval_metric: [mrr, recall]
 # the cutoff for each evaluation metric
 eval_metric_cutoff: [1,5,10,100,1000]
 # the cutoff for retrieval result
 hits: 1000
-
+# evaluate flops?
 eval_flops: false
+# evaluate posting length in inverted indexes?
 eval_posting_length: false
 
 # the post verifier
@@ -19,5 +17,3 @@ verifier_src: none
 verifier_index: none
 # the final hits
 verifier_hits: 1000
-
-save_res: retrieval_result

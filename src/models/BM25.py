@@ -17,119 +17,42 @@ class BM25(BaseSparseModel):
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
         self.special_token_ids = set([x[1] for x in config.special_token_ids.values()])
 
-        if self.config.pretokenize:
-            self.index_dir = os.path.join(self.index_dir, "pretokenize")
-
     @synchronize
-    def encode_text(self, loader_text: DataLoader, load_all_encode: bool = False):
+    @torch.no_grad()
+    def encode_text(self, *args, **kwargs):
+        """
+        One step in encode_text.
+
+        Args:
+            x: a data record.
+
+        Returns:
+            the text token id for indexing, array of [B, L]
+            the text token embedding for indexing, array of [B, L, D]
+        """
         if self.config.pretokenize:
-            text_token_id_path = os.path.join(self.text_dir, "text_token_ids.mmp")
-            text_embedding_path = os.path.join(self.text_dir, "text_embeddings.mmp")
+            return BaseSparseModel.encode_text(self, *args, **kwargs)
+        else:
+            return BaseOutput()
+    
+    @synchronize
+    @torch.no_grad()
+    def encode_query(self, *args, **kwargs):
+        """
+        One step in encode_text.
 
-            if load_all_encode:
-                text_embeddings = np.memmap(
-                    text_embedding_path,
-                    mode="r",
-                    dtype=np.float32
-                ).reshape(len(loader_text.dataset), self._text_length, self._output_dim).copy()
-                text_token_ids = np.memmap(
-                    text_token_id_path,
-                    mode="r",
-                    dtype=np.int32
-                ).reshape(len(loader_text.dataset), self._text_length)
+        Args:
+            x: a data record.
 
-            elif self.config.load_encode:
-                text_embeddings = np.memmap(
-                    text_embedding_path,
-                    mode="r",
-                    dtype=np.float32
-                ).reshape(len(loader_text.dataset), self._text_length, self._output_dim)[loader_text.sampler.start: loader_text.sampler.end].copy()
-                text_token_ids = np.memmap(
-                    text_token_id_path,
-                    mode="r",
-                    dtype=np.int32
-                ).reshape(len(loader_text.dataset), self._text_length)[loader_text.sampler.start: loader_text.sampler.end]
-
-            else:
-                assert self.config.eval_batch_size == 1, "Document Frequencies must be computed one by one!"
-                text_token_ids = np.zeros((len(loader_text.sampler), self._text_length), dtype=np.int32)
-                text_embeddings = np.zeros((len(loader_text.sampler), self._text_length, self._output_dim), dtype=np.float32)
-                self.logger.info(f"encoding {self.config.dataset} text...")
-
-                # counting df
-                df = defaultdict(int)
-                for i, x in enumerate(tqdm(loader_text, leave=False, ncols=100, desc="Collecting DFs")):
-                    text_token_id = x["text"]["input_ids"].squeeze(0).numpy()
-                    for j, token_id in enumerate(np.unique(text_token_id)):
-                        df[token_id] += 1
-                df = dict(df)
-
-                if self.config.is_distributed:
-                    all_dfs = self._gather_objects(df)
-                df = defaultdict(int)
-                for x in tqdm(all_dfs, desc="Merging DFs", ncols=100, leave=False):
-                    for k, v in x.items():
-                        df[k] += v
-                df = dict(df)
-
-                for i, x in enumerate(tqdm(loader_text, leave=False, ncols=100, desc="Computing TFIDFs")):
-                    text_token_id = x["text"]["input_ids"].squeeze(0).numpy()
-                    text_attn_mask = x["text"]["attention_mask"].squeeze(0).numpy()
-                    length = text_attn_mask.sum()
-
-                    text_token_ids[i] = text_token_id
-
-                    tf = defaultdict(int)
-                    for j, token_id in enumerate(text_token_id):
-                        if token_id in self.special_token_ids:
-                            continue
-                        tf[token_id] += 1 / length
-                    # force to assign 0 to pad token
-                    tf[self.tokenizer.pad_token_id] = 0
-                    tf = dict(tf)
-
-                    for j, token_id in enumerate(text_token_id):
-                        if token_id in self.special_token_ids:
-                            continue
-                        idf = np.log(len(loader_text.dataset) / (1 + df[token_id]))
-                        tfidf = idf * tf[token_id]
-                        # mask the negative tfidf score, which implies the document frequency of the token is bigger than the collection size
-                        if tfidf < 0:
-                            tfidf = 0
-                        text_embeddings[i, j, 0] = tfidf
-
-                    if "text_first_mask" in x:
-                        text_first_mask = x["text_first_mask"].squeeze(0).numpy().astype(bool)
-                        text_embeddings[i,:,0][~text_first_mask] = 0
-
-                if self.config.save_encode:
-                    self.save_to_mmp(
-                        path=text_token_id_path,
-                        shape=(len(loader_text.dataset), self._text_length),
-                        dtype=np.int32,
-                        loader=loader_text,
-                        obj=text_token_ids
-                    )
-                    self.save_to_mmp(
-                        path=text_embedding_path,
-                        shape=(len(loader_text.dataset), self._text_length, self._output_dim),
-                        dtype=np.float32,
-                        loader=loader_text,
-                        obj=text_embeddings
-                    )
-
-            text_embeddings = self._gate_text(text_embeddings)
-            return BaseOutput(embeddings=text_embeddings, token_ids=text_token_ids)
-
+        Returns:
+            the query token id for indexing, array of [B, L]
+            the query token embedding for indexing, array of [B, L, D]
+        """
+        if self.config.pretokenize:
+            return BaseSparseModel.encode_query(self, *args, **kwargs)
         else:
             return BaseOutput()
 
-    @synchronize
-    def encode_query(self, loader_query: DataLoader, load_all_encode: bool = False):
-        if self.config.pretokenize or self.config.get("return_code"):
-            return super().encode_query(loader_query, load_all_encode)
-        else:
-            return BaseOutput()
     
     @synchronize
     def generate_code(self, loaders: LOADERS):
@@ -137,8 +60,11 @@ class BM25(BaseSparseModel):
         Generate code by BM25 term weights.
         """
         import json
+        import shutil
         from pyserini.index.lucene import IndexReader
-        from utils.util import _get_token_code, makedirs
+        from utils.util import _get_token_code, makedirs, isempty
+
+        assert self.config.pretokenize, f"Enable pretokenize!"
 
         # the code is bind to the code_tokenizer
         code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
@@ -180,11 +106,16 @@ class BM25(BaseSparseModel):
         collection_dir = os.path.join(os.path.join(self.index_dir, "collection"), "weighted")
 
         input_path = f"{collection_dir}/{self.config.rank:02d}.jsonl"
-        makedirs(input_path)
-        
+
         if self.config.get("load_collection"):
             pass
         else:
+            if self.config.is_main_proc:
+                if not isempty(collection_dir):
+                    shutil.rmtree(collection_dir)
+                makedirs(input_path)
+            synchronize()
+            
             bm25_index = IndexReader(os.path.join(self.index_dir, "index"))
             with open(input_path, "w") as f:
                 for i in tqdm(range(start_idx, end_idx), leave=False, ncols=100, desc="Collecting DFs"):
@@ -192,23 +123,30 @@ class BM25(BaseSparseModel):
 
                     text_idx = x["text_idx"]
                     text_token_id = x["text"]["input_ids"]
-                    text = tokenizer.decode(text_token_id, skip_special_tokens=True)
-                    words = text.split(" ")
+                    tokens = tokenizer.convert_ids_to_tokens(text_token_id, skip_special_tokens=True)
+                    tokens = [token for token in tokens if token not in stop_words]
+                    
+                    words = tokenizer.convert_tokens_to_string(tokens).split(" ")
                     word_weight_pairs = {}
                     for word in words:
-                        if len(word) > 1 and word not in word_weight_pairs:
-                            # bypass the error when the word is not stored in the index
-                            try:
-                                # NOTE: the word is always lowercased
-                                word_weight_pairs[word.lower()] = round(bm25_index.compute_bm25_term_weight(str(text_idx), word), 3)
-                            except:
-                                pass
+                        # NOTE: the word is always lowercased
+                        word = word.lower()
+                        if word[-1] in punctuations:
+                            word = word[:-1]
+                        if word not in word_weight_pairs:
+                            # NOTE: set analyzer to None because this is a pretokenized index
+                            word_weight_pairs[word] = round(bm25_index.compute_bm25_term_weight(str(text_idx), word, analyzer=None), 3)
 
                     doc_vec = {"id": text_idx, "vector": word_weight_pairs}
                     f.write(json.dumps(doc_vec) + "\n")
         
+        code_fields = self.config.code_type.split("-")
+        defaults = ["weight", None]
+        code_fields.extend(defaults[-(3 - len(code_fields)):])
+        code_name, code_init_order, code_post_order = code_fields[:3]
+        
         # force to stem
-        _get_token_code(input_path, code_path, text_num, start_idx, end_idx, code_tokenizer, self.config.code_length, "weight", stop_words, self.config.get("code_sep", " "), self.config.get("stem_token_code"))
+        _get_token_code(input_path, code_path, text_num, start_idx, end_idx, code_tokenizer, self.config.code_length, code_init_order, code_post_order, stop_words, self.config.get("code_sep", " "), self.config.get("stem_token_code"))
 
 
     # FIXME: refactor
@@ -265,7 +203,7 @@ class BM25(BaseSparseModel):
             for k in base_key:
                 D[k] += 1
 
-        with open(f"{self.config.data_root}/{self.config.dataset}/queries.dev.small.tsv") as f:
+        with open(f"{self.config.data_root}/{self.config.dataset}/queries.dev.tsv") as f:
             for line in tqdm(f, ncols=100, desc="Collecting Query Terms"):
                 qid, text = line.strip().split("\t")
                 analysed = index.analyze(text)

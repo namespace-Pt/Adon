@@ -4,11 +4,9 @@ defaults:
   - base: NQ-open
   - model: _default
   - eval: retrieve
+  - mode: eval
   # add _self_ here so that the following arguments can be rewritten
   - _self_
-
-base:
-  mode: eval
 
 eval:
   verifier_type: pq

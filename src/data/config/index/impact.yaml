@@ -1,0 +1,15 @@
+defaults:
+  - _default
+  - _self_
+
+index_type: impact
+
+load_collection: false
+load_index: false
+
+index_thread: 32
+language: eng
+
+quantize_bit: 8
+granularity: token
+reduce: max

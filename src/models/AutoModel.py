@@ -7,7 +7,7 @@ from .BOW import BOW, BOWR
 from .BM25 import BM25
 from .COIL import COIL
 from .ColBERT import ColBERT
-from .DSI import DSI, GENRE
+from .DSI import DSI, GENRE, DSIQG
 from .DeepImpact import DeepImpact
 from .DPR import DPR
 from .IVF import IVF, TopIVF, TokIVF
@@ -32,6 +32,7 @@ MODEL_MAP = {
     "distillvq": DistillVQ,
     "dpr": DPR,
     "dsi": DSI,
+    "dsiqg": DSIQG,
     "genre": GENRE,
     "ivf": IVF,
     "rankt5": RankT5,

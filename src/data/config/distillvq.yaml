@@ -4,8 +4,7 @@ defaults:
   - base: MSMARCO-passage
   - model: dense
   - index: faiss
-  - train: neg
-  - eval: retrieve
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
@@ -27,18 +26,17 @@ model:
 index:
   index_type: OPQ96,PQ96x8
 
-train:
+mode:
   distill_src: RetroMAE
   enable_distill: bi
 
   epoch: 50
   batch_size: 128
-  hard_neg_num: 31
+  neg_num: 31
 
   learning_rate: 1e-5
   learning_rate_pq: 1e-4
   learning_rate_ivf: 1e-4
   scheduler: linear
 
-eval:
   eval_posting_length: true

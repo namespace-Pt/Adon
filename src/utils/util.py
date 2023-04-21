@@ -84,6 +84,7 @@ def makedirs(path:str, exist_ok:bool=True):
     """
     dirname = os.path.dirname(os.path.abspath(path))
     os.makedirs(dirname, exist_ok=exist_ok)
+    return path
 
 
 def readlink(path:str):
@@ -133,9 +134,9 @@ def update_hydra_config(config:dict):
 
     # if there is still remaining parameters
     if len(remain_keys):
-        dest["extra"] = {}
+        dest["__remaining"] = {}
         for key in remain_keys:
-            dest["extra"][key] = src[key]
+            dest["__remaining"][key] = src[key]
 
     return dest
 
@@ -402,7 +403,7 @@ def compute_metrics_nq(retrieval_result:RETRIEVAL_MAPPING, query_answer_path:str
     return validate(retrieval_result, answers, collection, num_workers=8, batch_size=8)
 
 
-def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, separator:str=" "):
+def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, title_col_idx=1, separator:str=" "):
     """
     Generate code based on titles of the NQ dataset. Add a padding token at the head.
 
@@ -414,10 +415,12 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
         end_idx: the ending offset
         tokenizer(transformers.AutoTokenizer)
         max_length: the maximum length of tokens
+        title_col_idx: which column is title?
 
     Returns:
         the populated memmap file
     """
+    unk_token_id = tokenizer.unk_token_id
     eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
     
     token_ids = np.memmap(
@@ -427,8 +430,8 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
         dtype=np.int32
     )
     if separator != " ":
-        separator_token_id = tokenizer.convert_tokens_to_ids(separator)
-        assert separator_token_id != tokenizer.unk_token_id
+        sep_id = tokenizer.convert_tokens_to_ids(separator)
+        assert sep_id != unk_token_id
         separator += " "
 
     with open(input_path, 'r') as f:
@@ -439,57 +442,42 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
             if idx >= end_idx:
                 break
             
-            fields = [x.strip() for x in line.split("\t")[1:]]
-            title = fields[0]
-            if len(title) == 0:
-                title = " ".join(fields[1].split(" ")[:5])
+            fields = [x.strip() for x in line.split("\t")]
+            title = fields[title_col_idx]
 
-            # separator itself cannot be included in the code
-            if separator != " ":
-                title = title.replace(separator[0], "")
-
-            # neglect unk_token and extra spaces
-            title = tokenizer.decode(tokenizer.encode(title, add_special_tokens=False), skip_special_tokens=True).strip()
-            
+            # remove extra spaces and lowercase
+            title = tokenizer.decode(tokenizer.encode(title, add_special_tokens=False), skip_special_tokens=True).strip().lower()
+ 
             # some title only contains one word and will be tokenized as unk_token
             if len(title) == 0:
-                title =  " ".join(fields[1].split(" ")[:5])
-                # separator itself cannot be included in the code
-                if separator != " ":
-                    title = title.replace(separator[0], "")
-                # neglect unk_token and extra spaces
-                title = tokenizer.decode(tokenizer.encode(title, add_special_tokens=False), skip_special_tokens=True).strip()
+                title =  " ".join(fields[title_col_idx + 1].split(" ")[:5])
+                # remove extra spaces and lowercase
+                title = tokenizer.decode(tokenizer.encode(title, add_special_tokens=False), skip_special_tokens=True).strip().lower()
 
             words = title.split(" ")
-            words = [word + separator for word in words if word not in ["\'\'","``","(",")","-","--","/",":"]]
-            # remove duplicate
-            new_words = []
-            for word in words:
-                if word not in new_words:
-                    new_words.append(words)
-
-            output = tokenizer.encode("".join(words), add_special_tokens=False)
-
-            if len(output) > max_length - 2:
-                if separator == " ":
-                    output = output[:max_length - 2]
-                else:
-                    new_output = []
-                    tmp = []
-                    for o in output:                            
-                        tmp.append(o)
-                        if o == separator_token_id:
-                            if len(new_output) + len(tmp) < max_length - 2:
-                                new_output.extend(tmp.copy())
-                                tmp.clear()
-                            else:
-                                break
-                    output = new_output
             
-            output += [eos_token_id]
-                    
-            token_ids[idx, 1: 1 + len(output)] = output
+            length = 0
+            output = []
+            for word in words:
+                word = word.replace(",", "")
+                encoded = tokenizer.encode(word)
+                # ignore unk_tokens
+                if unk_token_id in encoded:
+                    continue
+                encoded = tokenizer.encode(word, add_special_tokens=False)
+                # append sep token id
+                if separator != " ":
+                    encoded += [sep_id]
 
+                if 0 < len(encoded) < max_length - 2: 
+                    if length + len(encoded) <= max_length - 2:
+                        output.extend(encoded)
+                        length += len(encoded)
+                    else:
+                        break
+
+            output += [eos_token_id]
+            token_ids[idx, 1: 1 + len(output)] = output
             pbar.update(1)
         pbar.close()
 
@@ -502,7 +490,7 @@ def isnumber(x):
         return False
 
 
-def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, order:str, stop_words:set, separator:str=" ", stem=False):
+def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, init_order:str, post_order:str, stop_words:set, separator:str=" ", stem=False):
     """
     Generate code based on json files produced by :func:`models.BaseModel.BaseModel.anserini_index`.
     First reorder the words by ``order``, and tokenize the word sequence by ``tokenizer``.
@@ -515,6 +503,7 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
         end_idx: the ending idx
         tokenizer(transformers.AutoTokenizer)
         max_length: the maximum length of tokens
+        model: {weight, first, rand}
         order: the word order {weight, lexical, orginal}
         stop_words: some words to exclude
         separator: used to separate words from words
@@ -559,6 +548,8 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                         continue
                     if filter_number and isnumber(word):
                         continue
+                    # if len(word) == 1:
+                    #     continue
                     else:
                         filtered_word_score_pairs[word] = score
                 word_score_pairs = filtered_word_score_pairs
@@ -579,11 +570,20 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                         filtered_word_score_pairs[stemmed_word] = (word, score)
                 word_score_pairs = {v[0]: v[1] for v in filtered_word_score_pairs.values()}
 
+            if init_order == "weight":
+                word_score_pairs = sorted(word_score_pairs.items(), key=lambda x: x[1], reverse=True)
+            elif init_order == "first":
+                word_score_pairs = list(word_score_pairs.items())
+            elif init_order == "rand":
+                word_score_pairs = list(word_score_pairs.items())
+                random.shuffle(word_score_pairs)
+            else:
+                raise NotImplementedError(f"Init code order {init_order} not implemented!")
+
             # NOTE: remove any word consisting of unk_token_id
-            # forbid very long words to take up all code length
             length = 0
             output = []
-            for word, score in sorted(word_score_pairs.items(), key=lambda x: x[1], reverse=True):
+            for word, score in word_score_pairs:
                 word = word.replace(",", "")
                 encoded = tokenizer.encode(word)
                 if unk_token_id in encoded:
@@ -593,29 +593,25 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                 if separator != " ":
                     encoded += [sep_id]
 
+                # forbid very long words to take up all code length
+                # NOTE: try to fill all the blanks
                 if 0 < len(encoded) < max_length - 2: 
                     if length + len(encoded) <= max_length - 2:
-                        output.extend(encoded)
+                        output.append(encoded)
                         length += len(encoded)
-                    else:
-                        break
+                    # else:
+                    #     break
 
-            # TODO: random keyword order
-            # elif order == "rand":
-            #     # there will be at most split words in the final code
-            #     if separator != " ":
-            #         split = int((max_length - 2) / 2)
-            #     else:
-            #         split = max_length - 2
-            #     word_with_sep_head = word_with_sep[:split].copy()
-            #     word_with_sep_tail = word_with_sep[split:]
-            #     random.shuffle(word_with_sep_head)
-            #     word_with_sep = word_with_sep_head + word_with_sep_tail
+            # shuffle
+            if post_order == "rand":
+                assert init_order != "rand", "Find init_order and post_order both are rand!"
+                # there will be at most split words in the final code
+                random.shuffle(output)
 
+            # concate all encode words
+            output = sum(output, [])
             output += [eos_token_id]
-
             codes[idx, 1: 1+len(output)] = output
-
             pbar.update(1)
         pbar.close()
 
@@ -717,7 +713,9 @@ class Cluster():
             niter: number of iterations
         """
         cp = faiss.ClusteringParameters()
-        cp.verbose = True
+        # disable too few points warning
+        cp.min_points_per_centroid = 1
+        # cp.verbose = True
         cp.niter = niter
 
         kmeans = faiss.Clustering(embeddings.shape[1], k, cp)
@@ -819,7 +817,6 @@ class Cluster():
         for label in pred:
             assignments.append([label])
 
-        print(pred)
         for i in tqdm(range(k), ncols=100, desc="Hierarchical Clustering"):
             # the children node in one specific cluster
             children = []
@@ -922,12 +919,9 @@ class Config(DotDict):
             self.eval_step = 10
             self.eval_delay = 0
             self.save_ckpt = "debug"
+            self.save_index = False
+            self.save_encode = False
         
-        if self.dataset == "LECARD":
-            if self.get("eval_metric"):
-                self.eval_metric = "mrr,map,precision,ndcg,recall".split(",")
-                self.eval_metric_cutoff = [5, 10, 20, 30]
-
     def _set_distributed(self):
         """
         Set up distributed nccl backend.
@@ -1087,17 +1081,14 @@ class Config(DotDict):
 
     def _from_hydra(self, hydra_config:OmegaConf):
         hydra_config = update_hydra_config(OmegaConf.to_container(hydra_config))
-        # remove train config if not training
-        if "train" in hydra_config and hydra_config["base"]["mode"] != "train":
-            del hydra_config["train"]
         # flatten the config object
         config = flatten_hydra_config(hydra_config)
         for k, v in config.items():
             setattr(self, k, v)
 
         self.__post_init__()
-        if "extra" in hydra_config:
-            self.logger.info(f"Incoming configs will be set: {hydra_config['extra']}")
+        if "__remaining" in hydra_config:
+            self.logger.info(f"Incoming configs will be set: {hydra_config['__remaining']}")
 
         self.logger.info(f"Config: {self}")
 

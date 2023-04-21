@@ -1,20 +1,7 @@
 defaults:
   - _default
 
-code_type: none
-# the length of the code in the memmap file (leading 0)
-code_length: 0
-# the extra size of the code
-code_size: 0
-code_tokenizer: "t5"
-
-# return pre-defined code for generative models
-return_code: false
 # the beams when decoding
 nbeam: 10
-# stop if the threshold has been reduced to 
-beam_trsd: 0
-# how many steps to examine threshold
-trsd_start_len: 0
 # how to measure relevance, generative probability or eos hidden states
 rank_type: prob

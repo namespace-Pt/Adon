@@ -50,7 +50,7 @@ class BaseModel(nn.Module):
 
         # all the following attributes can be generated according to name
         self.retrieve_dir = os.path.join(config.cache_root, config.eval_mode, self.name, config.eval_set)
-        self.retrieval_result_path = os.path.join(self.retrieve_dir, self.config.save_res + ".pkl")
+        self.retrieval_result_path = os.path.join(self.retrieve_dir, str(self.config.save_res) + ".pkl")
         # refered by transformer trainer
         self.ckpt_dir = os.path.join(config.cache_root, "ckpts", self.name)
         self.index_dir = os.path.join(config.cache_root, "index", self.name, config.text_type, config.index_type)
@@ -160,7 +160,7 @@ class BaseModel(nn.Module):
         return teacher_score
 
 
-    def _compute_loss(self, score:TENSOR, label:TENSOR, teacher_score:Optional[TENSOR]):
+    def _compute_loss(self, score:TENSOR, label:TENSOR, teacher_score:Optional[TENSOR]=None):
         """
         A general method to compute loss (contrastive cross-entropy or distillation)
 
@@ -415,7 +415,7 @@ class BaseModel(nn.Module):
 
             query_embeddings = np.memmap(
                 # the embedding file may be a symbolic link
-                readlink(os.path.join(self.config.cache_root, "encode", self.config.verifier_src, self.config.eval_set, "query_embeddings.mmp")),
+                readlink(os.path.join(self.config.cache_root, "encode", self.config.verifier_src, "query", self.config.eval_set, "query_embeddings.mmp")),
                 mode="r",
                 dtype=np.float32
             ).reshape(len(loader_query.dataset), -1)[start_query_idx: end_query_idx].copy()
@@ -424,7 +424,7 @@ class BaseModel(nn.Module):
             if self.config.verifier_type == "flat":
                 text_embeddings = np.memmap(
                     # the embedding file may be a symbolic link
-                    readlink(os.path.join(self.config.cache_root, "encode", self.config.verifier_src, "text_embeddings.mmp")),
+                    readlink(os.path.join(self.config.cache_root, "encode", self.config.verifier_src, "text", self.config.text_type, "text_embeddings.mmp")),
                     mode="r",
                     dtype=np.float32
                 ).reshape(len(loader_text.dataset), -1)[start_text_idx: end_text_idx].copy()
@@ -572,8 +572,11 @@ class BaseModel(nn.Module):
             try:
                 if self.config.dataset == "NQ-open":
                     markdown_format_metric = "|".join([str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@20"]), str(metrics["Recall@100"])]) + "|"
-                elif self.config.dataset in ["NQ"]:
-                    markdown_format_metric = "|".join([str(metrics["MRR@5"]), str(metrics["MRR@10"]), str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
+                elif self.config.dataset == "NQ":
+                    markdown_format_metric = "|".join([str(metrics["MRR@5"]), str(metrics["MRR@10"]), str(metrics["Recall@5"]), str(metrics["Recall@10"])]) + "|"
+                    markdown_format_metric += "\t" + "|".join([str(metrics["MRR@10"]), str(metrics["MRR@100"]), str(metrics["Recall@1"]), str(metrics["Recall@10"]), str(metrics["Recall@100"])]) + "|"
+                elif "Top300k" in self.config.dataset:
+                    markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@1"]), str(metrics["Recall@5"]), str(metrics["Recall@10"])]) + "|"
                 else:
                     markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
             except:
@@ -685,6 +688,13 @@ class BaseSparseModel(BaseModel):
         self._text_length = self.config.text_length
         self._query_length = self.config.query_length
 
+        # override index_dir
+        if self.config.index_type == "impact":
+            self.index_dir = os.path.join(self.index_dir, self.config.granularity)
+        elif self.config.index_type == "bm25":
+            self.index_dir = os.path.join(self.index_dir, "pretokenize" if self.config.pretokenize else "default")
+
+
     def _compute_overlap(self, query_token_id:TENSOR, text_token_id:TENSOR) -> TENSOR:
         """
         Compute overlapping mask between the query tokens and positive sequence tokens across batches.
@@ -742,8 +752,8 @@ class BaseSparseModel(BaseModel):
 
         if "text_first_mask" in x:
             # mask the duplicated tokens' weight
-            text_first_mask = self._move_to_device(x["text_first_mask"])
-            text_token_embedding = text_token_embedding.masked_fill(~text_first_mask, 0)
+            text_first_mask = x["text_first_mask"].numpy()
+            text_token_embedding[~text_first_mask] = 0
         else:
             text_token_embedding[~x["text"]["attention_mask"].bool().numpy()] = 0
 
@@ -796,7 +806,7 @@ class BaseSparseModel(BaseModel):
                 dtype=np.int32
             ).reshape(len(loader_text.dataset), self._text_length)
 
-        elif self.config.load_encode:
+        elif self.config.load_encode or self.config.load_text_encode:
             text_embeddings = np.memmap(
                 text_embedding_path,
                 mode="r",
@@ -872,7 +882,7 @@ class BaseSparseModel(BaseModel):
                 mode="r",
                 dtype=np.int32
             ).reshape(len(loader_query.dataset), self._query_length)
-        elif self.config.load_encode:
+        elif self.config.load_encode or self.config.load_query_encode:
             query_embeddings = np.memmap(
                 query_embedding_path,
                 mode="r",
@@ -969,13 +979,13 @@ class BaseSparseModel(BaseModel):
         """
         Construct :class:`utils.index.BaseAnseriniIndex`.
         """
-        if not self.config.load_encode:
-            save_encode = self.config.save_encode
+        save_encode = self.config.save_encode
+        if not (self.config.load_encode or self.config.load_text_encode):
             self.config.save_encode = True
             self.logger.warning("Automatically set save_encode=True to save encode results on disk for later usage by anserini!")
-            encode_output = self.encode_text(loader_text)
-            self.config.save_encode = save_encode
-            
+        encode_output = self.encode_text(loader_text)
+        self.config.save_encode = save_encode
+    
         # load cache only on the master node
         all_encode_output = self.encode_text(loader_text, load_all_encode=True)
         if not self.config.is_main_proc:
@@ -985,15 +995,18 @@ class BaseSparseModel(BaseModel):
             all_text_token_ids = all_encode_output.token_ids
             all_text_token_weights = all_encode_output.embeddings.squeeze(-1) if all_encode_output.embeddings is not None else None
 
+            if self.config.text_type == "default":
+                collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
+            else:
+                raise NotImplementedError(f"Anserini index for text type {self.config.text_type} is not implemented yet!")
+            
             # include plm special tokens
             stop_words = set(x[0] for x in self.config.special_token_ids.values() if x[0] is not None)
 
-            collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
             collection_dir = os.path.join(self.index_dir, "collection")
             index_dir = os.path.join(self.index_dir, "index")
 
             index = ANSERINI_INDEX_MAP[self.config.index_type](
-                collection_path=collection_path,
                 collection_dir=collection_dir,
                 index_dir=index_dir
             )
@@ -1010,12 +1023,13 @@ class BaseSparseModel(BaseModel):
             else:
                 enable_build_index = True
 
-            if self.config.index_type == "impact-word":
+            if self.config.index_type == "impact" and self.config.granularity == "word":
                 subword_to_word = SUBWORD_TO_WORD_FN[self.config.plm_tokenizer]
             else:
                 subword_to_word = None
 
             index.fit(
+                text_path=collection_path,
                 text_cols=self.config.text_col,
                 text_token_ids=all_text_token_ids,
                 text_token_weights=all_text_token_weights,
@@ -1024,7 +1038,9 @@ class BaseSparseModel(BaseModel):
                 thread_num=self.config.index_thread,
                 enable_build_collection=enable_build_collection,
                 enable_build_index=enable_build_index,
-                language=self.config.get("language"),
+                language=self.config.language,
+                granularity=self.config.granularity,
+                # sepecific to impact indexes
                 subword_to_word=subword_to_word,
                 quantize_bit=self.config.get("quantize_bit"),
                 reduce=self.config.get("reduce"),
@@ -1085,7 +1101,7 @@ class BaseSparseModel(BaseModel):
             tid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", "text", "id2index.pkl"))
             qid2index = load_pickle(os.path.join(self.config.cache_root, "dataset", "query", self.config.eval_set, "id2index.pkl"))
 
-            query_path = f"{self.config.data_root}/{self.config.dataset}/queries.{self.config.eval_set}.small.tsv"
+            query_path = f"{self.config.data_root}/{self.config.dataset}/queries.{self.config.eval_set}.tsv"
 
             # load all verifier embeddings on the master node
             verifier = self.init_verifier(loaders, load_all_verifier=True)
@@ -1232,7 +1248,10 @@ class BaseSparseModel(BaseModel):
             text_codes[:, 0] = tokenizer.pad_token_id
             text_codes[:, 1:] = -1
 
-            code_order = self.config.code_type.split("-")[-1]
+            code_fields = self.config.code_type.split("-")
+            defaults = ["weight", None]
+            code_fields.extend(defaults[-(3 - len(code_fields)):])
+            code_name, code_init_order, code_post_order = code_fields[:3]
 
             stop_words = set()
             punctuations = set([x for x in ";:'\\\"`~[]<>()\{\}/|?!@$#%^&*…-_=+,."])
@@ -1242,7 +1261,7 @@ class BaseSparseModel(BaseModel):
             # include nltk stop words
             stop_words = stop_words | nltk_stop_words
             # include numbers in stopwords
-            stop_words.add(r"\d")
+            # stop_words.add(r"\d")
 
             thread_num = 0
             collection_dir = os.path.join(self.index_dir, "collection")
@@ -1269,7 +1288,8 @@ class BaseSparseModel(BaseModel):
                     end_idx,
                     tokenizer,
                     self.config.code_length,
-                    code_order,
+                    code_init_order,
+                    code_post_order,
                     stop_words,
                     self.config.get("code_sep", " "),
                     self.config.get("stem_token_code")
@@ -1331,7 +1351,7 @@ class BaseDenseModel(BaseModel):
                 dtype=np.float32
             ).reshape(len(loader_text.dataset), self._output_dim)
 
-        elif self.config.load_encode:
+        elif self.config.load_encode or self.config.load_text_encode:
             text_embeddings = np.memmap(
                 text_embedding_path,
                 mode="r",
@@ -1386,7 +1406,7 @@ class BaseDenseModel(BaseModel):
                 dtype=np.float32
             ).reshape(len(loader_query.dataset), self._output_dim)
 
-        elif self.config.load_encode:
+        elif self.config.load_encode or self.config.load_query_encode:
             query_embeddings = np.memmap(
                 query_embedding_path,
                 mode="r",
@@ -1569,7 +1589,7 @@ class BaseDenseModel(BaseModel):
             cluster = Cluster(device=self.config.device)
 
             cluster_num = self.config.ncluster
-            assignments = cluster.hierarchical_kmeans(text_embeddings, cluster_num, self.config.leaf_node_num, metric=cluster_metric,)
+            assignments = cluster.hierarchical_kmeans(text_embeddings, cluster_num, self.config.leaf_node_num, metric=cluster_metric)
             # assignments = load_pickle("assignments.pkl")
             all_code_length = np.array([len(x) for x in assignments])
             self.logger.info(f"average code length is {all_code_length.mean()}, max code length is {all_code_length.max()}, min code length is {all_code_length.min()}")
@@ -1774,12 +1794,12 @@ class BaseGenerativeModel(BaseModel):
         # in case the query is parallel
         query_start_idx = loader_query.sampler.start
 
-        beam_manager = BeamDecoder()
+        beam_decoder = BeamDecoder()
 
         tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
-            # if (x["query_idx"].unsqueeze(-1) == torch.tensor([123,379])).sum() == 0:
+            # if not (x["query_idx"].unsqueeze(-1) == torch.tensor([21,32])).any():
             #     continue
 
             query = self._move_to_device(x["query"])
@@ -1789,7 +1809,7 @@ class BaseGenerativeModel(BaseModel):
 
             # print(tokenizer.batch_decode(query["input_ids"], skip_special_tokens=True))
 
-            beam_manager.search(
+            beam_decoder.search(
                 model=self.plm, 
                 nbeam=self.config.nbeam, 
                 threshold=self.config.get("beam_trsd", 0), 
@@ -1798,12 +1818,21 @@ class BaseGenerativeModel(BaseModel):
                 constrain_index=index,
                 rank_type=self.config.get("rank_type", "prob"),
                 tokenizer=tokenizer,
-                dedup=self.config.get("dedup_beam"),
+                do_dedup=self.config.get("beam_dedup"),
+                do_sample=self.config.get("beam_sample"),
+                do_early_stop=self.config.get("beam_early_stop"),
+                early_stop_start_len=self.config.get("early_stop_start_len"),
                 **query,
                 encoder_outputs=encoder_outputs
             )
-            beams = beam_manager.beams
-            eos_hidden_states = beam_manager.eos_hidden_states
+            beams = beam_decoder.beams
+            eos_hidden_states = beam_decoder.eos_hidden_states
+
+            # print(beams)
+            # print(beam_decoder.prev_text_indices)
+            # y = input()
+            # if y == "s":
+            #     return
 
             # ranking by score
             if self.config.rank_type == "eos":
@@ -1811,7 +1840,7 @@ class BaseGenerativeModel(BaseModel):
                 scores = self.scorer(eos_hidden_states).squeeze(-1).tolist()
             elif self.config.rank_type == "prob":            
                 # ranking by generation prob
-                scores = sum(beam_manager.seq_scores, [])
+                scores = sum(beam_decoder.seq_scores, [])
             else:
                 raise NotImplementedError(f"Ranking type {self.config.ranking_type} is not implemented yet!")
 
@@ -1819,13 +1848,8 @@ class BaseGenerativeModel(BaseModel):
             for j, batch in enumerate(beams):
                 res = defaultdict(list)
                 for k, c in enumerate(batch):
-                    if beam_manager.constrain_index_type == "trie":
-                        ids = index[c]
-                    elif beam_manager.constrain_index_type == "wordset":
-                        # need to provide prev_text_indices
-                        ids = beam_manager.prev_text_indices[j][k]
-                    else:
-                        raise NotImplementedError(f"Constrain index {self.config.index_type} not implemented yet!")
+                    # need to provide prev_text_indices
+                    ids = beam_decoder.prev_text_indices[j][k]
                     for id in ids:
                         res[id].append(scores[offset + k])
                 offset += len(batch)

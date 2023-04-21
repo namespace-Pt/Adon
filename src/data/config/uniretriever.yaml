@@ -3,14 +3,11 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: _default
-  - eval: retrieve
+  - mode: eval
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
-base:
-  mode: eval
-
-eval:
+mode:
   verifier_type: flat
   verifier_src: AR2
   # verifier_index: OPQ96,PQ96x8

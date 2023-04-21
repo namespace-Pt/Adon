@@ -13,7 +13,7 @@ class UniCOIL(COIL):
         self.tokenProject = nn.Sequential(
             nn.Linear(plm_dim, plm_dim),
             nn.ReLU(),
-            nn.Linear(plm_dim, self._output_dim),
+            nn.Linear(plm_dim, 1),
             nn.ReLU()
         )
 
@@ -85,7 +85,7 @@ class UniCOIL(COIL):
             # set necessary attributes to enable loader_train
             self.config.loader_train = "neg"
             self.config.train_set = [self.config.eval_set]
-            self.config.hard_neg_type = "none"
+            self.config.neg_type = "none"
             self.config.batch_size = self.config.eval_batch_size
 
             loader_train = prepare_train_data(self.config, text_dataset, return_dataloader=True)

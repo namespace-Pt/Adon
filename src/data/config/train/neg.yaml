@@ -1,8 +1,0 @@
-defaults:
-  - _default
-  - _self_
-
-hard_neg_num: 1
-hard_neg_type: BM25
-
-loader_train: neg

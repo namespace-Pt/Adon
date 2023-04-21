@@ -8,3 +8,5 @@ index_type: invvec
 posting_prune: 0.
 index_shard: 32
 index_thread: 10
+load_index: true
+save_index: true

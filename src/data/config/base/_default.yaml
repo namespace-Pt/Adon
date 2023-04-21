@@ -3,8 +3,20 @@ data_root: /works/Adhoc-Retrieval
 plm_root: /works/huggingface-PLMs
 seed: 42
 
-mode: train
 # the device to run the model or script
 device: 0
 
-data_format: "memmap"
+text_type: default
+data_format: memmap
+num_worker: 2
+
+# the batch size fed to the loader_eval
+eval_batch_size: 100
+# the dataset to evaluate the model or run commands
+eval_set: dev
+# use the debug mode (will train 2 steps and encode 10 steps)
+debug: false
+
+# when using distributed training/evaluating, we can choose to split text
+# or query across processes
+parallel: text

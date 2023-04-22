@@ -7,7 +7,7 @@ from multiprocessing import Pool
 from collections import defaultdict
 from transformers import AutoTokenizer
 from utils.util import save_pickle, load_pickle, Config
-from utils.typings import *
+from utils.static import *
 
 import hydra
 from pathlib import Path

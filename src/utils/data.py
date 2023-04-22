@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, IterableDataset, DataLoader
 from random import sample, choices, shuffle
 from transformers import AutoTokenizer
 from .util import load_pickle, save_pickle, load_attributes, MasterLogger, Config
-from .typings import *
+from .static import *
 
 
 
@@ -21,11 +21,21 @@ class BaseDataset(Dataset):
 
         self.cache_dir = os.path.join(config.cache_root, "dataset")
 
-        self.cls_token_id = config.special_token_ids["cls"][1]
-        self.sep_token_id = config.special_token_ids["sep"][1]
-        self.pad_token_id = config.special_token_ids["pad"][1]
         self.special_token_ids = [x[1] for x in config.special_token_ids.values() if x[0] is not None]
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
+    
+    def _to_numpy(self, data):
+        if isinstance(data, Mapping):
+            new_data = {}
+            for k, v in data.items():
+                if isinstance(v, list):
+                    new_data[k] = np.array(v, dtype=np.int64)
+                elif isinstance(v, Mapping):
+                    new_data[k] = self._to_numpy(v)
+            new_data = type(data)(new_data)
+        elif isinstance(data, list):
+            return np.array(data, dtype=np.int64)
+        return new_data
 
 
 
@@ -111,8 +121,9 @@ class TextDataset(BaseDataset):
             # neglect the first padding token
             # copy the code because the memmap is read-only
             token_id = token_id[1:].copy()
-            token_id[token_id == self.sep_token_id] = -1
-            # neglect the last sep_token_id or eos_token_id
+            valid_token_num = (token_id != -1).sum()
+            # mask the last sep_token_id or eos_token_id
+            token_id[valid_token_num - 1] = -1
             token_id = token_id[token_id != -1].tolist()
         outputs = self.tokenizer.prepare_for_model(token_id, max_length=max_length, padding="max_length", truncation=True)
         return outputs
@@ -163,7 +174,7 @@ class TextDataset(BaseDataset):
 
         return_dict = {
             "text_idx": index,
-            "text": text
+            "text": self._to_numpy(text)
         }
 
         if self.config.get("return_code"):
@@ -301,7 +312,7 @@ class QueryDataset(BaseDataset):
 
         return_dict = {
             "query_idx": index,
-            "query": query
+            "query": self._to_numpy(query)
         }
 
         if self.config.get("return_embedding"):
@@ -310,13 +321,13 @@ class QueryDataset(BaseDataset):
         if self.config.get("enable_distill") == "bi":
             return_dict["query_teacher_embedding"] = self.query_embeddings[index].astype(np.float32)
         
-        if self.config.get("return_sep_mask"):
+        if self.config.get("return_special_mask"):
             query_token_id = np.array(query["input_ids"])
-            sep_pos = ((query_token_id == self.cls_token_id) + (query_token_id == self.sep_token_id)).astype(bool)
-            query_sep_mask = np.array(query["attention_mask"], dtype=np.int64)
+            sep_pos = (query_token_id[:, None] == self.special_token_ids).any(-1)
+            query_special_mask = np.array(query["attention_mask"], dtype=np.int64)
             # mask [SEP] and [CLS]
-            query_sep_mask[sep_pos] = 0
-            return_dict["query_sep_mask"] = query_sep_mask
+            query_special_mask[sep_pos] = 0
+            return_dict["query_special_mask"] = query_special_mask
 
         return return_dict
 
@@ -472,7 +483,10 @@ class TrainDataset(BaseDataset):
         
         if self.config.get("permute_code") is not None and self.config.permute_code > 0:
             # there must be only one text
-            text_code = return_dict["text_code"][0].tolist()
+            if "query_code" in return_dict:
+                text_code = return_dict["query_code"][0].tolist()
+            else:
+                text_code = return_dict["text_code"][0].tolist()
             text_codewords = []
             word = []
             # get each keyword
@@ -494,7 +508,10 @@ class TrainDataset(BaseDataset):
                 # word keeps eos_token_id
                 enhanced_text_code.append(code)
             # int64
-            return_dict["text_code"] = np.array(enhanced_text_code)
+            if "query_code" in return_dict:
+                return_dict["query_code"] = np.array(enhanced_text_code)
+            else:
+                return_dict["text_code"] = np.array(enhanced_text_code)
         
         if self.config.get("elastic_ce"):
             text_code = return_dict["text_code"][0][1:]
@@ -674,23 +691,23 @@ class RawTripleTrainDataset(IterableDataset):
                 fields = line.strip().split("\t")
                 query, pos_text, neg_text = fields[:3]
 
-                query = self._tokenize(query, self.config.query_length)
+                query = self.tokenize(query, self.config.query_length)
 
-                text = self._tokenize([pos_text, neg_text], self.config.text_length)
+                text = self.tokenize([pos_text, neg_text], self.config.text_length)
 
                 # default to int64 so that it can be directly converted to long tensor
                 return_dict = {
-                    "query": query,
-                    "text": text
+                    "query": self._to_numpy(query),
+                    "text": self._to_numpy(text)
                 }
 
-                if self.config.get("return_sep_mask"):
+                if self.config.get("return_special_mask"):
                     query_token_id = np.array(query["input_ids"])
-                    sep_pos = ((query_token_id == self.cls_token_id) + (query_token_id == self.sep_token_id)).astype(bool)
-                    query_sep_mask = np.array(query["attention_mask"], dtype=np.int64)
+                    sep_pos = (query_token_id[:, None] == self.special_token_ids).any(-1)
+                    query_special_mask = np.array(query["attention_mask"], dtype=np.int64)
                     # mask [SEP] and [CLS]
-                    query_sep_mask[sep_pos] = 0
-                    return_dict["query_sep_mask"] = query_sep_mask
+                    query_special_mask[sep_pos] = 0
+                    return_dict["query_special_mask"] = query_special_mask
 
                 yield return_dict
 

@@ -73,7 +73,8 @@ class BOW(DSI):
             if self.config.reduce_code == "mean":
                 loss = loss.mean()
             elif self.config.reduce_code == "min":
-                loss = loss.min(-1).values.mean()
+                min_loss, min_index = loss.min(-1)
+                loss = min_loss.mean()
             else:
                 raise NotImplementedError(f"Reduction type {self.config.reduce_code} is not implemented!")
         return loss
@@ -89,7 +90,7 @@ class BOW(DSI):
 
         if self.config.get("sort_code"):
             from tqdm import tqdm
-            from utils.index import BeamDecoder
+            from utils.index import BeamDecoder, GreedyCodeSorter
             from utils.data import prepare_train_data
             index = self.index(loaders).index
 
@@ -124,7 +125,10 @@ class BOW(DSI):
                 mode="r+"
             ).reshape(len(loader_train.dataset), self.config.code_length)
 
-            sorter = BeamDecoder()
+            if self.config.get("nbeam", 1) > 1:
+                sorter = BeamDecoder()
+            else:
+                sorter = GreedyCodeSorter()
             tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
 
             start_idx = 0
@@ -144,7 +148,6 @@ class BOW(DSI):
                     nbeam=self.config.nbeam, 
                     max_new_tokens=self.config.code_length - 1, 
                     constrain_index=index,
-                    tokenizer=tokenizer,
                     # forbid early stop as we must generate the entire sequence
                     do_early_stop=False,
                     **query,

@@ -7,7 +7,7 @@ from tqdm import tqdm
 from dataclasses import field, dataclass
 from transformers import Trainer, TrainingArguments, TrainerCallback, DefaultFlowCallback, ProgressCallback
 from torch.utils.data import DataLoader
-from .typings import *
+from .static import *
 
 from transformers.training_args import (
     cached_property,

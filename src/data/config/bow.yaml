@@ -33,3 +33,4 @@ mode:
 extra:
   code_type: words_comma
   code_length: 34
+  code_sep: ","

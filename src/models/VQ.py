@@ -10,7 +10,7 @@ from transformers import AutoModel
 from .BaseModel import BaseDenseModel
 from utils.util import BaseOutput, readlink
 from utils.index import FaissIndex
-from utils.typings import *
+from utils.static import *
 
 
 

@@ -10,7 +10,7 @@ from .BaseModel import BaseSparseModel
 from .UniCOIL import UniCOIL
 from utils.util import BaseOutput, synchronize
 from utils.index import FaissIndex
-from utils.typings import *
+from utils.static import *
 
 
 

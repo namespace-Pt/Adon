@@ -3,3 +3,4 @@ code_type: none
 code_length: 0
 code_tokenizer: t5
 code_size: 0
+code_sep: " "

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 from collections import OrderedDict
 from transformers import AutoModel, AutoTokenizer
-from .typings import *
+from .static import *
 
 
 def mean_len(i:Iterable):
@@ -956,7 +956,7 @@ class Config(DotDict):
 
     def _set_plm(self, plm:Optional[str]=None, already_on_main_proc=False):
         """
-        Load huggingface plms; download it if it doesn't exist. One may add a new plm into the ``plm_map`` object so that Manager knows how to
+        Load huggingface plms; download it if it doesn't exist. One may add a new plm into the ``PLM_MAP`` object so that Manager knows how to
         download it (``load_name``) and where to store it cache files (``tokenizer``).
 
         Attributes:
@@ -967,88 +967,16 @@ class Config(DotDict):
 
         self.logger.info(f"setting PLM to {plm}...")
 
-        plm_map = {
-            "bert": {
-                # different model may share the same tokenizer, so we can load the same tokenized data for them
-                "tokenizer": "bert",
-                "load_name": "bert-base-uncased"
-            },
-            "distilbert": {
-                "tokenizer": "bert",
-                "load_name": "distilbert-base-uncased",
-            },
-            "ernie": {
-                "tokenizer": "bert",
-                "load_name": "nghuyong/ernie-2.0-en"
-            },
-            "bert-chinese": {
-                "tokenizer": "bert-chinese",
-                "load_name": "bert-base-chinese"
-            },
-            "bert-xingshi": {
-                "tokenizer": "bert-xingshi",
-                "load_name": "null"
-            },
-            "t5-small": {
-                "tokenizer": "t5",
-                "load_name": "t5-small"
-            },
-            "t5": {
-                "tokenizer": "t5",
-                "load_name": "t5-base"
-            },
-            "t5-large": {
-                "tokenizer": "t5",
-                "load_name": "t5-large"
-            },
-            "doct5": {
-                "tokenizer": "t5",
-                "load_name": "castorini/doc2query-t5-base-msmarco"
-            },
-            "distilsplade": {
-                "tokenizer": "bert",
-                "load_name": "null"
-            },
-            "splade": {
-                "tokenizer": "bert",
-                "load_name": "null"
-            },
-            "bart": {
-                "tokenizer": "bart",
-                "load_name": "facebook/bart-base"
-            },
-            "retromae": {
-                "tokenizer": "bert",
-                "load_name": "Shitao/RetroMAE"
-            },
-            "retromae_msmarco": {
-                "tokenizer": "bert",
-                "load_name": "Shitao/RetroMAE_MSMARCO"
-            },
-            "retromae_distill": {
-                "tokenizer": "bert",
-                "load_name": "Shitao/RetroMAE_MSMARCO_distill"
-            },
-            "deberta": {
-                "tokenizer": "deberta",
-                "load_name": "microsoft/deberta-base"
-            },
-            "keyt5": {
-                "tokenizer": "t5",
-                "load_name": "snrspeaks/KeyPhraseTransformer"
-            }
-        }
-
         self.plm_dir = os.path.join(self.plm_root, plm)
-        self.plm_tokenizer = plm_map[plm]["tokenizer"]
+        self.plm_tokenizer = PLM_MAP[plm]["tokenizer"]
 
         # download plm once
         if self.is_main_proc and not os.path.exists(os.path.join(self.plm_dir, "pytorch_model.bin")):
-            print(f"downloading {plm_map[plm]['load_name']}")
+            print(f"downloading {PLM_MAP[plm]['load_name']}")
             os.makedirs(self.plm_dir, exist_ok=True)
-            tokenizer = AutoTokenizer.from_pretrained(plm_map[plm]["load_name"])
+            tokenizer = AutoTokenizer.from_pretrained(PLM_MAP[plm]["load_name"])
             tokenizer.save_pretrained(self.plm_dir)
-            model = AutoModel.from_pretrained(plm_map[plm]["load_name"])
+            model = AutoModel.from_pretrained(PLM_MAP[plm]["load_name"])
             model.save_pretrained(self.plm_dir)
         if not already_on_main_proc:
             synchronize()
@@ -1060,8 +988,11 @@ class Config(DotDict):
                 "cls": (tokenizer.cls_token, tokenizer.cls_token_id),
                 "pad": (tokenizer.pad_token, tokenizer.pad_token_id),
                 "unk": (tokenizer.unk_token, tokenizer.unk_token_id),
-                "sep": (tokenizer.sep_token if tokenizer.sep_token is not None else tokenizer.eos_token, tokenizer.sep_token_id if tokenizer.sep_token_id is not None else tokenizer.eos_token_id),
+                "sep": (tokenizer.sep_token, tokenizer.sep_token_id),
+                "eos": (tokenizer.eos_token, tokenizer.eos_token_id),
             }
+            # try:
+            #     bos_token_id = model.config.bos_token_id
         self.vocab_size = tokenizer.vocab_size
         del tokenizer
         # map text_col_sep to special_token if applicable

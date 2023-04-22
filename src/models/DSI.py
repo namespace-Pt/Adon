@@ -1,7 +1,7 @@
 import os
 import torch
 import numpy as np
-from transformers import T5ForConditionalGeneration
+from transformers import AutoModelForSeq2SeqLM
 from .BaseModel import BaseGenerativeModel
 
 
@@ -9,7 +9,7 @@ class DSI(BaseGenerativeModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.plm = T5ForConditionalGeneration.from_pretrained(config.plm_dir)
+        self.plm = AutoModelForSeq2SeqLM.from_pretrained(config.plm_dir)
         if config.code_size > 0:
             self.plm.resize_token_embeddings(config.vocab_size + config.code_size)
         
@@ -126,3 +126,5 @@ class DSIQG(DSI):
                 code = tokenizer.encode(str(i), add_special_tokens=False)
                 code.append(eos_token_id)
                 text_codes[i, 1: len(code) + 1] = code
+
+

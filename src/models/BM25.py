@@ -6,7 +6,7 @@ from tqdm import tqdm
 from collections import defaultdict
 from .BaseModel import BaseSparseModel
 from transformers import AutoTokenizer
-from utils.typings import *
+from utils.static import *
 from utils.util import BaseOutput, synchronize, save_pickle
 
 
@@ -15,7 +15,6 @@ class BM25(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
-        self.special_token_ids = set([x[1] for x in config.special_token_ids.values()])
 
     @synchronize
     @torch.no_grad()

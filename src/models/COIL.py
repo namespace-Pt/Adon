@@ -40,11 +40,11 @@ class COIL(BaseSparseModel):
         text_token_embedding = self._encode_text(**x["text"])	# B * (1+N), LS, D
 
         query_token_id = x["query"]["input_ids"]
-        query_sep_mask = x["query_sep_mask"]
+        query_special_mask = x["query_special_mask"]
         text_token_id = x["text"]["input_ids"].view(text_token_embedding.shape[:-1])
         if self.config.is_distributed and self.config.enable_all_gather:
             query_token_id = self._gather_tensors(query_token_id)
-            query_sep_mask = self._gather_tensors(query_sep_mask)
+            query_special_mask = self._gather_tensors(query_special_mask)
             text_token_id = self._gather_tensors(text_token_id)
             query_token_embedding = self._gather_tensors(query_token_embedding)
             text_token_embedding = self._gather_tensors(text_token_embedding)
@@ -59,7 +59,7 @@ class COIL(BaseSparseModel):
         # max pooling
         query_text_score = query_text_score.max(dim=-1)[0] # B, LQ, B * (1+N)
         # mask [CLS] and [SEP] and [PAD]
-        query_text_score = query_text_score * query_sep_mask.unsqueeze(-1)
+        query_text_score = query_text_score * query_special_mask.unsqueeze(-1)
         score = query_text_score.sum(dim=1) # B, B * (1+N)
 
         if self.config.enable_inbatch_negative:
@@ -104,7 +104,7 @@ class COIL(BaseSparseModel):
         overlap = self._compute_overlap(x["query"]["input_ids"], x["text"]["input_ids"], cross_batch=False)   # B, LQ, LS
         query_text_score = query_token_embedding.matmul(text_token_embedding.transpose(-1,-2)) * overlap  # B, LQ, LS
         # mask the [SEP] token and [CLS] token
-        query_text_score = query_text_score.max(dim=-1)[0] * x["query_sep_mask"]    # B, LQ
+        query_text_score = query_text_score.max(dim=-1)[0] * x["query_special_mask"]    # B, LQ
         score = query_text_score.sum(dim=1)
         return score
 

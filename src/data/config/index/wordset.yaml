@@ -9,7 +9,6 @@ index_shard: 32
 load_index: true
 save_index: true
 
-code_sep: ","
 # deduplicate among beams?
 beam_dedup: false
 # early stop when decoding? (specifically designed for wordset index)

@@ -58,7 +58,7 @@ def main(config:Config):
                 start_idx = end_idx
         
         # mask eos tokens
-        query_token_ids[query_token_ids == config.special_token_ids["sep"][1]] = -1
+        query_token_ids[query_token_ids == config.special_token_ids["eos"][1]] = -1
 
         # use memmap to temperarily save the generated token ids
         if config.is_main_proc:

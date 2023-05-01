@@ -26,11 +26,11 @@ train:
 
   learning_rate: 1e-3
   scheduler: linear
-  batch_size: 200
+  batch_size: 400
   main_metric: MRR@10
 
 
-extra:
+code:
   code_type: title
   code_length: 34
 

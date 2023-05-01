@@ -18,18 +18,19 @@ model:
   nbeam: 10
 
 train:
+  train_set: [train, doc]
   # only query-pos pair
   neg_type: none
   epoch: 80
 
   learning_rate: 1e-3
   scheduler: linear
-  batch_size: 200
+  batch_size: 400
   eval_delay: 40e
 
   main_metric: MRR@10
 
-extra:
+code:
   code_type: ANCE_hier
   code_length: 10
   code_size: 100

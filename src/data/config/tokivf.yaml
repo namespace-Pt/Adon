@@ -14,7 +14,7 @@ base:
 
 model:
   model_type: tokivf
-  return_sep_mask: true
+  return_special_mask: true
   # how many token postings to scan
   text_gate_k: 3
 
@@ -22,13 +22,13 @@ index:
   # what percentile of the inverted lists are kept
   posting_prune: 0.996
 
-mode:
+train:
   neg_num: 7
   enable_distill: bi
   distill_src: RetroMAE
 
+eval:
   eval_posting_length: true
-
   verifier_type: pq
   verifier_src: DistillVQ_d-RetroMAE
   verifier_index: OPQ96,PQ96x8

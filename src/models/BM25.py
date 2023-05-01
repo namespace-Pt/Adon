@@ -60,6 +60,7 @@ class BM25(BaseSparseModel):
         """
         import json
         import shutil
+        from transformers import AutoModel
         from pyserini.index.lucene import IndexReader
         from utils.util import _get_token_code, makedirs, isempty
 
@@ -87,9 +88,16 @@ class BM25(BaseSparseModel):
                 mode="w+",
                 shape=(text_num, self.config.code_length)
             )
-            # the codes are always led by 0 and padded by -1
-            text_codes[:, 0] = tokenizer.pad_token_id
+            model = AutoModel.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+            try:
+                start_token_id = model._get_decoder_start_token_id()
+            except ValueError:
+                start_token_id = model.config.pad_token_id
+                self.logger.warning(f"Decoder start token id not found, use pad token id ({start_token_id}) instead!")
+            # the codes are always led by start_token_id and padded by -1
+            text_codes[:, 0] = start_token_id
             text_codes[:, 1:] = -1
+            
         synchronize()
 
         stop_words = set()
@@ -145,7 +153,22 @@ class BM25(BaseSparseModel):
         code_name, code_init_order, code_post_order = code_fields[:3]
         
         # force to stem
-        _get_token_code(input_path, code_path, text_num, start_idx, end_idx, code_tokenizer, self.config.code_length, code_init_order, code_post_order, stop_words, self.config.get("code_sep", " "), self.config.get("stem_token_code"))
+        _get_token_code(
+            input_path, 
+            code_path, 
+            text_num, 
+            start_idx, 
+            end_idx, 
+            code_tokenizer, 
+            self.config.code_length, 
+            code_init_order, 
+            code_post_order, 
+            stop_words, 
+            self.config.get("code_sep", " "), 
+            self.config.get("stem_code"),
+            self.config.get("filter_num"),
+            self.config.get("filter_unit"),
+        )
 
 
     # FIXME: refactor

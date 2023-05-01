@@ -5,3 +5,5 @@ defaults:
 nbeam: 10
 # how to measure relevance, generative probability or eos hidden states
 rank_type: prob
+# sample instead of topk?
+decode_do_sample: false

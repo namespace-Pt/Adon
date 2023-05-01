@@ -14,6 +14,8 @@ model:
   model_type: colbert
   token_dim: 128
 
-mode:
+train:
   learning_rate: 3e-5
+
+eval:
   eval_mode: rerank

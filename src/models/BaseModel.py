@@ -10,7 +10,7 @@ from tqdm import tqdm
 from typing import Optional, Mapping
 from pathlib import Path
 from collections import defaultdict
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoModelForSeq2SeqLM
 from torch.utils.data import DataLoader
 from utils.util import load_pickle, save_pickle, compute_metrics, compute_metrics_nq, makedirs, readlink, synchronize, BaseOutput, MasterLogger, Config
 from utils.index import *
@@ -447,8 +447,10 @@ class BaseModel(nn.Module):
         """
         Shotcut for encoding both text and query.
         """
-        self.encode_text(loaders["text"])
-        self.encode_query(loaders["query"])
+        if self.config.do_text:
+            self.encode_text(loaders["text"])
+        if self.config.do_query:
+            self.encode_query(loaders["query"])
 
 
     def index(self, loaders:LOADERS):
@@ -572,7 +574,7 @@ class BaseModel(nn.Module):
             try:
                 if self.config.dataset == "NQ-open":
                     markdown_format_metric = "|".join([str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@20"]), str(metrics["Recall@100"])]) + "|"
-                elif self.config.dataset == "NQ":
+                elif self.config.dataset in ["NQ", "NQ-50k-seen", "NQ-50k-unseen"]:
                     markdown_format_metric = "|".join([str(metrics["MRR@5"]), str(metrics["MRR@10"]), str(metrics["Recall@5"]), str(metrics["Recall@10"])]) + "|"
                     markdown_format_metric += "\t" + "|".join([str(metrics["MRR@10"]), str(metrics["MRR@100"]), str(metrics["Recall@1"]), str(metrics["Recall@10"]), str(metrics["Recall@100"])]) + "|"
                 elif "Top300k" in self.config.dataset:
@@ -1234,8 +1236,6 @@ class BaseSparseModel(BaseModel):
             text_num = len(loader_text.dataset)
             makedirs(code_path)
 
-            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
-
             # load all saved token ids
             # all codes are led by 0 and padded by -1
             text_codes = np.memmap(
@@ -1244,8 +1244,28 @@ class BaseSparseModel(BaseModel):
                 mode="w+",
                 shape=(text_num, self.config.code_length)
             )
-            # the codes are always led by 0 and padded by -1
-            text_codes[:, 0] = tokenizer.pad_token_id
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+            model = AutoModel.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+            try:
+                start_token_id = model._get_decoder_start_token_id()
+            except ValueError:
+                start_token_id = model.config.pad_token_id
+                self.logger.warning(f"Decoder start token id not found, use pad token id ({start_token_id}) instead!")
+            
+            if self.config.get("store_weight"):
+                weight_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "weights.mmp")
+                # store the weights of each semantic unit (elements between the code_sep)
+                text_code_weights = np.memmap(
+                    weight_path,
+                    dtype=np.float32,
+                    mode="w+",
+                    shape=(text_num, self.config.code_length)
+                )
+            else:
+                weight_path = None
+
+            # the codes are always led by start_token_id and padded by -1
+            text_codes[:, 0] = start_token_id
             text_codes[:, 1:] = -1
 
             code_fields = self.config.code_type.split("-")
@@ -1292,7 +1312,10 @@ class BaseSparseModel(BaseModel):
                     code_post_order,
                     stop_words,
                     self.config.get("code_sep", " "),
-                    self.config.get("stem_code")
+                    self.config.get("stem_code"),
+                    self.config.get("filter_num"),
+                    self.config.get("filter_unit"),
+                    weight_path
                 ))
 
             # the collection has no special_tokens so we don't need to filter them out
@@ -1589,7 +1612,7 @@ class BaseDenseModel(BaseModel):
             cluster = Cluster(device=self.config.device)
 
             cluster_num = self.config.ncluster
-            assignments = cluster.hierarchical_kmeans(text_embeddings, cluster_num, self.config.leaf_node_num, metric=cluster_metric)
+            assignments = cluster.hierarchical_kmeans(text_embeddings, cluster_num, self.config.nleaf, metric=cluster_metric)
             # assignments = load_pickle("assignments.pkl")
             all_code_length = np.array([len(x) for x in assignments])
             self.logger.info(f"average code length is {all_code_length.mean()}, max code length is {all_code_length.max()}, min code length is {all_code_length.min()}")
@@ -1667,8 +1690,6 @@ class BaseDenseModel(BaseModel):
             text_num = len(loader_text.dataset)
             assignment_path = os.path.join(self.config.cache_root, "cluster", self.name, self.config.cluster_type, "assignments.mmp")
 
-            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
-
             # generate codes from pre-defined cluster assignments
             if os.path.exists(assignment_path):
                 makedirs(code_path)
@@ -1679,30 +1700,40 @@ class BaseDenseModel(BaseModel):
                 ).reshape(text_num, -1)
 
                 assert self.config.code_length >= assignments.shape[1] + 2, "The code_length must be greater than the assignment length by 2 because we have a leading 0 and an eos_token_id!"
-                codes = np.memmap(
+                text_codes = np.memmap(
                     code_path,
                     # plus one because the code should be lead with the padding token id
                     shape=(text_num, self.config.code_length),
                     mode="w+",
                     dtype=np.int32
                 )
-                codes[:, 0] = tokenizer.pad_token_id
-                codes[:, 1:] = -1
+                tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+                model = AutoModel.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+                try:
+                    start_token_id = model._get_decoder_start_token_id()
+                except ValueError:
+                    start_token_id = model.config.pad_token_id
+                    self.logger.warning(f"Decoder start token id not found, use pad token id ({start_token_id}) instead!")
+
+                # the codes are always led by start_token_id and padded by -1
+                text_codes[:, 0] = start_token_id
+                text_codes[:, 1:] = -1
+
                 bias = tokenizer.vocab_size
                 # another bias to distinguish the same cluster id in different layer
                 if self.config.code_type.split("-")[-1] == "bias":
-                    bias += np.arange(codes.shape[1]) * (assignments.max() + 1)
+                    bias += np.arange(text_codes.shape[1]) * (assignments.max() + 1)
 
                 for i, x in enumerate(assignments):
                     length = (x != -1).sum()
-                    codes[i, 1: length + 1] = x[:length]
+                    text_codes[i, 1: length + 1] = x[:length]
                     if isinstance(bias, np.ndarray):
-                        codes[i, 1: length + 1] += bias[:length]
+                        text_codes[i, 1: length + 1] += bias[:length]
                     else:
-                        codes[i, 1: length + 1] += bias
+                        text_codes[i, 1: length + 1] += bias
 
                     # assign eos_token_id
-                    codes[i, length + 1] = tokenizer.eos_token_id if tokenizer.eos_token_id else tokenizer.sep_token_id
+                    text_codes[i, length + 1] = tokenizer.eos_token_id if tokenizer.eos_token_id else tokenizer.sep_token_id
 
             else:
                 raise FileNotFoundError(f"{assignment_path} not found!")
@@ -1811,6 +1842,7 @@ class BaseGenerativeModel(BaseModel):
 
             beam_decoder.search(
                 model=self.plm, 
+                query={**query, "encoder_outputs": encoder_outputs},
                 nbeam=self.config.nbeam, 
                 threshold=self.config.get("beam_trsd", 0), 
                 trsd_start_len=self.config.get("trsd_start_len", 0), 
@@ -1818,12 +1850,10 @@ class BaseGenerativeModel(BaseModel):
                 constrain_index=index,
                 rank_type=self.config.get("rank_type", "prob"),
                 tokenizer=tokenizer,
-                do_dedup=self.config.get("beam_dedup"),
-                do_sample=self.config.get("beam_sample"),
-                do_early_stop=self.config.get("beam_early_stop"),
-                early_stop_start_len=self.config.get("early_stop_start_len"),
-                **query,
-                encoder_outputs=encoder_outputs
+                do_dedup=self.config.get("wordset_dedup"),
+                do_sample=self.config.get("decode_do_sample"),
+                do_early_stop=self.config.get("wordset_early_stop"),
+                early_stop_start_len=self.config.get("early_stop_start_len")
             )
             beams = beam_decoder.beams
             eos_hidden_states = beam_decoder.eos_hidden_states

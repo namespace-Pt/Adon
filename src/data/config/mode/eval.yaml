@@ -1,3 +1,5 @@
+# @package _global_.eval
 defaults:
   - _eval
+
 mode: eval

@@ -2,10 +2,8 @@ import sys
 import hydra
 from omegaconf import OmegaConf
 from utils.util import Config
-from utils.trainer import train
 from utils.data import prepare_data
 from models.AutoModel import MODEL_MAP
-
 
 name = None
 
@@ -13,7 +11,6 @@ name = None
 def get_config(hydra_config: OmegaConf):
     config._from_hydra(hydra_config)
     config.name = name
-    config.logger.info(f"using model {name}...")
 
 
 def main(config:Config):
@@ -23,11 +20,11 @@ def main(config:Config):
         rank: current process id
         world_size: total gpus
     """
+    loaders = prepare_data(config)
     model = MODEL_MAP[config.model_type](config).to(config.device)
 
-    loaders = prepare_data(config)
-
     if config.mode == "train":
+        from utils.trainer import train
         model.load()
         train(model, loaders)
 
@@ -38,14 +35,6 @@ def main(config:Config):
     elif config.mode == "encode":
         model.load()
         model.encode(loaders)
-
-    elif config.mode == "encode-text":
-        model.load()
-        model.encode_text(loaders["text"])
-
-    elif config.mode == "encode-query":
-        model.load()
-        model.encode_query(loaders["query"])
 
     elif config.mode == "cluster":
         model.load()

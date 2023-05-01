@@ -1,3 +1,5 @@
+# @package _global_.eval
+
 # evaluation metrics, seperated by colon
 eval_metric: [mrr, recall]
 # the cutoff for each evaluation metric

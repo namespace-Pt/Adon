@@ -30,7 +30,6 @@ class DSI(BaseGenerativeModel):
         loss = self.plm(**query, labels=labels).loss
         return loss
 
-
     def rerank_step(self, x):
         """
         Rerank using the log sum of the generation probabilities.
@@ -39,6 +38,7 @@ class DSI(BaseGenerativeModel):
         query = x["query"]
         # starts with 0
         text_code = x["text_code"]
+        text_code[text_code == -1] = 0
         logits = self.plm(**query, decoder_input_ids=text_code).logits
         logits = logits.log_softmax(-1)
         score = logits.gather(dim=-1, index=text_code[:, 1:, None]).squeeze(-1).sum(-1)
@@ -51,7 +51,7 @@ class GENRE(DSI):
     
     def generate_code(self, loaders):
         import multiprocessing as mp
-        from transformers import AutoTokenizer
+        from transformers import AutoTokenizer, AutoModel
 
         assert self.config.code_type == "title"
         if self.config.is_main_proc:
@@ -67,7 +67,6 @@ class GENRE(DSI):
 
             collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
             makedirs(code_path)
-            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
 
             # load all saved token ids
             text_codes = np.memmap(
@@ -76,9 +75,17 @@ class GENRE(DSI):
                 mode="w+",
                 shape=(text_num, self.config.code_length)
             )
-            # the codes are always led by 0 and padded by -1
-            text_codes[:, 0] = tokenizer.pad_token_id
-            text_codes[:, 1:] = -1
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+            model = AutoModel.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+            try:
+                start_token_id = model._get_decoder_start_token_id()
+            except ValueError:
+                start_token_id = model.config.pad_token_id
+                self.logger.warning(f"Decoder start token id not found, use pad token id ({start_token_id}) instead!")
+
+            # the codes are always led by start_token_id and padded by -1
+            text_codes[:, 0] = start_token_id
+            text_codes[:, 1:] = -1            
 
             preprocess_threads = 10
             all_line_count = text_num
@@ -97,7 +104,7 @@ class DSIQG(DSI):
         super().__init__(config)
     
     def generate_code(self, loaders):
-        from transformers import AutoTokenizer
+        from transformers import AutoTokenizer, AutoModel
         from utils.util import makedirs
         if self.config.is_main_proc:
             code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
@@ -108,9 +115,6 @@ class DSIQG(DSI):
             loader_text = loaders["text"]
             text_num = len(loader_text.dataset)
 
-            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
-            eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
-
             # load all saved token ids
             text_codes = np.memmap(
                 code_path,
@@ -118,10 +122,19 @@ class DSIQG(DSI):
                 mode="w+",
                 shape=(text_num, self.config.code_length)
             )
-            # the codes are always led by 0 and padded by -1
-            text_codes[:, 0] = tokenizer.pad_token_id
+            tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+            model = AutoModel.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
+            try:
+                start_token_id = model._get_decoder_start_token_id()
+            except ValueError:
+                start_token_id = model.config.pad_token_id
+                self.logger.warning(f"Decoder start token id not found, use pad token id ({start_token_id}) instead!")
+
+            # the codes are always led by start_token_id and padded by -1
+            text_codes[:, 0] = start_token_id
             text_codes[:, 1:] = -1
 
+            eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
             for i in range(text_num):
                 code = tokenizer.encode(str(i), add_special_tokens=False)
                 code.append(eos_token_id)

@@ -1,3 +1,5 @@
+# @package _global_
 defaults:
   - _eval
+
 mode: index

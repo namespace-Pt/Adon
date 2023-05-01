@@ -12,7 +12,7 @@ mode:
   verifier_src: AR2
   # verifier_index: OPQ96,PQ96x8
 
-model:
+eval:
   model_type: uniretriever
   load_index: true
 

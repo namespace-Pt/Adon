@@ -1,0 +1,8 @@
+defaults:
+  - _default
+  - _self_
+
+index_type: fm
+load_index: true
+load_collection: true
+index_thread: 32

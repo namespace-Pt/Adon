@@ -6,12 +6,10 @@ index_type: trie
 load_index: true
 save_index: true
 
-beam_early_stop: false
 early_stop_start_len: 0
 
 # stop if the threshold has been reduced to 
 beam_trsd: 0
 # how many steps to examine threshold
 trsd_start_len: 0
-# sample instead of topk?
-beam_sample: false
+

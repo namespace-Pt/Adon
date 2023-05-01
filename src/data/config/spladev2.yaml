@@ -23,13 +23,14 @@ index:
   load_index: false
   save_index: false
 
-mode:
+train:
   learning_rate: 2e-5
   scheduler: linear
-  batch_size: 16
+  batch_size: 64
   neg_num: 7
   lambda_warmup_step: 0
   eval_step: 5e
 
+eval:
   eval_posting_length: true
   eval_flops: true

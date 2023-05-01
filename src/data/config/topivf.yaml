@@ -26,16 +26,15 @@ model:
 
   enable_commit_loss: true
 
-mode:
+train:
   epoch: 50
-  batch_size: 128
 
   learning_rate: 1e-4
   scheduler: linear
 
+eval:
   hits: 0
   eval_posting_length: true
-
   verifier_type: pq
   verifier_src: DistillVQ_d-RetroMAE
   verifier_index: OPQ96,PQ96x8

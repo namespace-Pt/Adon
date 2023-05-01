@@ -54,31 +54,40 @@ def train(model, loaders):
     text_dataset = loaders["text"].dataset
     train_dataset = prepare_train_data(config, text_dataset)
 
+    batch_size_per_device = config.batch_size // config.world_size
+    if config.batch_size % config.world_size != 0:
+        config.logger.warning(f"Found batch size ({config.batch_size}) is indivisible to world size ({config.world_size}), automatically reset batch size to ({batch_size_per_device * config.world_size})!")
+        config.batch_size = batch_size_per_device * config.world_size
+
     args = AdonTrainingArguments(
         do_train=True,
         output_dir=model.ckpt_dir,
         # disable any report_to callbacks
-        report_to="none",
+        report_to=config.report_to,
         # keep all values output from the dataset
         remove_unused_columns=False,
         ddp_find_unused_parameters=False,
         # keep the progress callback
         disable_tqdm=False,
+        # log nan and inf loss
         logging_nan_inf_filter=False,
         # if device is cpu, do not activate gpu
         no_cuda=config.device == "cpu",
         # align trainingarguments.device to our config.device
         device_index=config.device,
-        per_device_train_batch_size=config.batch_size,
+        per_device_train_batch_size=batch_size_per_device,
         seed=config.seed,
         num_train_epochs=config.epoch,
         dataloader_num_workers=config.num_worker,
-        max_steps=config.get("max_step", 0),
+        max_steps=config.max_step,
         fp16=config.fp16,
-        gradient_accumulation_steps=config.accumulate_step,
+        bf16=config.bf16,
+        gradient_accumulation_steps=config.grad_accum_step,
         eval_delay=config.eval_delay,
         eval_steps=config.eval_step,
         save_at_eval=config.save_at_eval,
+        # defaults to use torch AdamW
+        optim="adamw_torch",
         learning_rate=config.learning_rate,
         adam_beta1=config.adam_beta1,
         adam_beta2=config.adam_beta2,
@@ -87,10 +96,10 @@ def train(model, loaders):
         max_grad_norm=config.max_grad_norm,
         lr_scheduler_type=config.scheduler,
         warmup_ratio=config.warmup_ratio,
-        warmup_steps=config.warmup_steps,
+        warmup_steps=config.warmup_step,
         metric_for_best_model=config.main_metric,
         early_stop_patience=config.early_stop_patience,
-        deepspeed=config.get("deepspeed")
+        deepspeed=config.deepspeed
     )
 
     trainer = AdonTrainer(
@@ -106,6 +115,7 @@ def train(model, loaders):
     trainer.add_callback(AdonProgressCallback)
     trainer.add_callback(AdonFlowCallback)
 
+    model.logger.info(f"training {model.name}...")
     # NOTE: reset the verbosity level, preventing warning of transformers
     # transformers.logging.set_verbosity_error()
     trainer.train()
@@ -206,7 +216,7 @@ class AdonTrainingArguments(TrainingArguments):
             device = torch.device("cuda", self.local_rank)
             self._n_gpu = 1
         elif self.local_rank == -1:
-            # modified: just use the args.device as the default device
+            # NOTE: modified here: just use the args.device as the default device
             # set _n_gpu to 1 to avoid Trainer activating DataParallel
             device = torch.device(self.device_index)
             self._n_gpu = 1
@@ -329,7 +339,7 @@ class AdonTrainer(Trainer):
         else:
             # early stop
             self.control.early_stop_patience_counter += 1
-            if self.control.early_stop_patience_counter >= self.args.early_stop_patience:
+            if self.args.early_stop_patience > 0 and self.control.early_stop_patience_counter >= self.args.early_stop_patience:
                 logger.info(f"\n{self.control.early_stop_patience_counter} SUCCESSIVE INFERIOR PERFORMANCE THAN BEST, EARLY STOPPING!")
                 # end training
                 self.control.should_training_stop = True

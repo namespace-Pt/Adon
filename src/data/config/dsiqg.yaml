@@ -24,7 +24,7 @@ train:
 
   learning_rate: 1e-3
   scheduler: linear
-  batch_size: 200
+  batch_size: 400
   eval_delay: 20e
   early_stop_patience: 10
 
@@ -32,6 +32,6 @@ train:
 
   train_set: [train, doct5]
 
-extra:
+code:
   code_type: id
   code_length: 10

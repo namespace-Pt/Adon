@@ -14,7 +14,7 @@ base:
 model:
   model_type: crossenc
 
-mode:
-  batch_size: 4
+train:
+  batch_size: 16
   learning_rate: 3e-5
   neg_num: 7

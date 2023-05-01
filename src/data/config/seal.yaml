@@ -3,35 +3,36 @@ defaults:
   - _default
   - base: NQ
   - model: generative
-  - index: wordset
-  - mode: train
+  - index: fm
+  - mode: eval
   - extra: code
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
 base:
-  plm: t5
+  plm: bart
   parallel: query
+  eval_batch_size: 1
 
 model:
-  model_type: bow
+  model_type: seal
   nbeam: 10
 
 train:
   # only query-pos pair
   neg_type: none
-  epoch: 50
+  epoch: 80
+  max_grad_norm: 0.1
 
   learning_rate: 1e-3
   scheduler: linear
   batch_size: 400
-  eval_delay: 20e
-  early_stop_patience: 5
+  eval_delay: 40e
+
   main_metric: MRR@10
 
 code:
-  code_type: words_comma_plus_stem
-  code_length: 26
-  code_sep: ","
-  reduce_code: min
-  permute_code: 0
+  code_type: seal
+  code_length: 10
+  return_code: false
+  # return_query_code: true

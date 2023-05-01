@@ -10,9 +10,11 @@ defaults:
 
 model:
   model_type: coil
-  return_sep_mask: true
+  return_special_mask: true
   token_dim: 32
 
-mode:
+train:
   neg_num: 7
+
+eval:
   eval_posting_length: true

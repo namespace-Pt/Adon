@@ -17,8 +17,7 @@ model:
 index:
   index_type: Flat
 
-mode:
-  batch_size: 32
+train:
   neg_num: 7
   learning_rate: 3e-5
   scheduler: linear

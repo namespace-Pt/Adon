@@ -3,7 +3,7 @@ import torch
 from .BaseModel import BaseModel
 
 from .AR2 import AR2
-from .BOW import BOW, BOWR
+from .BOW import BOW
 from .BM25 import BM25
 from .COIL import COIL
 from .ColBERT import ColBERT
@@ -14,6 +14,7 @@ from .IVF import IVF, TopIVF, TokIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
 from .Sequer import Sequer
+from .SEAL import SEAL
 from .RankT5 import RankT5
 from .CrossEnc import CrossEncoder
 from .UniCOIL import UniCOIL
@@ -24,7 +25,6 @@ MODEL_MAP = {
     "ar2": AR2,
     "bm25": BM25,
     "bow": BOW,
-    "bowr": BOWR,
     "coil": COIL,
     "colbert": ColBERT,
     "crossenc": CrossEncoder,
@@ -40,6 +40,7 @@ MODEL_MAP = {
     "sequer": Sequer,
     "sparta": SPARTA,
     "spladev2": SPLADEv2,
+    "seal": SEAL,
     "topivf": TopIVF,
     "tokivf": TokIVF,
     "unicoil": UniCOIL,

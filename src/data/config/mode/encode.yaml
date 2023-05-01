@@ -1,1 +1,5 @@
+# @package _global_.infer
+
 mode: encode
+do_text: true
+do_query: true

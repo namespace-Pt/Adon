@@ -13,11 +13,11 @@ base:
 
 model:
   model_type: deepimpact
-  return_sep_mask: true
+  return_special_mask: true
 
 index:
   granularity: word
 
-mode:
+train:
   neg_num: 7
   max_grad_norm: 2.0

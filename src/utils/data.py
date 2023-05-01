@@ -362,7 +362,7 @@ class TrainDataset(BaseDataset):
                     os.path.join(config.cache_root, "codes", config.code_type, config.code_tokenizer, str(config.code_length), config.code_src, query_set, "codes.mmp"),
                     mode="r",
                     dtype=np.int32
-                ).reshape(-1, config.code_length))
+                ).reshape(len(qrel), -1, config.code_length))
         
         if self.config.get("permute_code") and self.config.permute_code > 0:
             assert config.code_sep is not None
@@ -479,7 +479,7 @@ class TrainDataset(BaseDataset):
         if self.config.get("return_query_code"):
             # FIXME: here is a displeasing workaround
             # we need to maintain a query-text table to generate multiple codes for multiple texts
-            return_dict["query_code"] = self.query_codes[query_set_idx][[qrel_idx]].astype(np.int64)
+            return_dict["query_code"] = self.query_codes[query_set_idx][qrel_idx].astype(np.int64)
         
         if self.config.get("permute_code") is not None and self.config.permute_code > 0:
             # there must be only one text
@@ -499,19 +499,19 @@ class TrainDataset(BaseDataset):
                 if c == self.code_sep_id:
                     text_codewords.append(word)
                     word = []
-            enhanced_text_code = [text_code]
+            permuted_text_code = [text_code]
             for i in range(self.config.permute_code):
                 order = np.random.permutation(len(text_codewords))
                 # prepend 0 at the head
                 code = sum([text_codewords[x] for x in order], [0]) + word
                 code += [-1 for _ in range(len(text_code) - len(code))]
                 # word keeps eos_token_id
-                enhanced_text_code.append(code)
+                permuted_text_code.append(code)
             # int64
             if "query_code" in return_dict:
-                return_dict["query_code"] = np.array(enhanced_text_code)
+                return_dict["query_code"] = np.array(permuted_text_code)
             else:
-                return_dict["text_code"] = np.array(enhanced_text_code)
+                return_dict["text_code"] = np.array(permuted_text_code)
         
         if self.config.get("elastic_ce"):
             text_code = return_dict["text_code"][0][1:]

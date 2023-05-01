@@ -17,9 +17,10 @@ index:
   load_index: false
   save_index: false
 
-mode:
+train:
   neg_num: 7
   learning_rate: 3e-5
 
+eval:
   eval_posting_length: true
   eval_flops: true

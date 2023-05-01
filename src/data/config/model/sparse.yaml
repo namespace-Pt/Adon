@@ -7,7 +7,7 @@ text_gate_k: 0
 query_gate_k: 0
 
 # return attention mask for the eos/sep token
-return_sep_mask: false
+return_special_mask: false
 # return the attention mask for the first occurance of a token in a piece of text
 return_first_mask: false
 # separate query and document encoder?

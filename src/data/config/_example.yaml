@@ -12,7 +12,6 @@ base:
   eval_batch_size: 2
   num_worker: 0
 
-mode:
-  neg_type: random
+train:
   batch_size: 2
-
+  neg_type: random

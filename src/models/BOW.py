@@ -10,73 +10,39 @@ class BOW(DSI):
 
     def forward(self, x):
         x = self._move_to_device(x)
-        query = x["query"]
         # squeeze the auxillary dimension
         if "query_code" in x:
-            text_code = x["query_code"].squeeze(1)
+            text_code = x["query_code"]
         else:
-            text_code = x["text_code"].squeeze(1)
-        
-        if text_code.dim() == 2:                
-            # the code has a leading 0, shift left one position so t5 can shift it back
-            # default to -1
-            if self.config.get("elastic_ce"):
-                elastic_labels = x["elastic_label"]
-                decoder_input_ids = text_code.masked_fill(text_code == -1, 0)
-                logits = self.plm(**query, decoder_input_ids=decoder_input_ids).logits
-                logits = torch.log_softmax(logits, dim=-1)
+            text_code = x["text_code"]
+    
+        # in case there are multiple codes for one text (config.permute_code > 0)
+        encoder_outputs = self.plm.encoder(**x["query"])
+        query_attn_mask = x["query"]["attention_mask"]
+        B, M = text_code.shape[:2]
+        for k, v in encoder_outputs.items():
+            encoder_outputs[k] = v.repeat_interleave(M, 0)
+        query_attn_mask = query_attn_mask.repeat_interleave(M, 0)   # B*M, L
 
-                # find invalid elastic_labels
-                indicator = elastic_labels == -1    # B, LC-1, LC-1
-                # only keep valid ones
-                masked_labels = elastic_labels.masked_fill(indicator, 0)
-                # gather logits
-                res = logits.gather(dim=-1, index=masked_labels)
-                # mask invalid positions
-                res[indicator] = 0
-                # forbids dividing zero
-                denominator = (~indicator).sum(-1)
-                denominator[denominator == 0] = 1
-                # variable valid number per row
-                loss = -(res.sum(-1) / denominator).mean()
-                # if torch.isnan(loss):
-                #     print(x["qrel_idx"], x["elastic_label"], text_code, res)
-                #     return
+        text_code = text_code.flatten(0,1)  # B*M, CL
+        # the code has a leading 0, shift left one position so t5 can shift it back
+        # default to -1
+        labels = torch.zeros_like(text_code) - 1
+        labels[:, :-1] = text_code[:, 1:]
+        # replace the padding code with the -100 (ignored when computing loss)
+        labels = labels.masked_fill(labels == -1, -100)
+        logits = self.plm(attention_mask=query_attn_mask, encoder_outputs=encoder_outputs, labels=labels).logits    # B*M, CL, V
 
-            else:
-                labels = torch.zeros_like(text_code) - 1
-                labels[:, :-1] = text_code[:, 1:]
-                # replace the padding code with the -100 (ignored when computing loss)
-                labels = labels.masked_fill(labels == -1, -100)
-                loss = self.plm(**query, labels=labels).loss
+        # ignore_index defaults to -100
+        loss = nn.functional.cross_entropy(logits.flatten(0,1), labels.view(-1), reduction="none").view(B, M, -1).mean(-1) # B, M
+        # sum
+        if self.config.reduce_code == "mean":
+            loss = loss.mean()
+        elif self.config.reduce_code == "min":
+            min_loss, min_index = loss.min(-1)
+            loss = min_loss.mean()
         else:
-            # in case there are multiple codes for one text (config.permute_code > 0)
-            encoder_outputs = self.plm.encoder(**x["query"])
-            query_attn_mask = x["query"]["attention_mask"]
-            B, M = text_code.shape[:2]
-            for k, v in encoder_outputs.items():
-                encoder_outputs[k] = v.repeat_interleave(M, 0)
-            query_attn_mask = query_attn_mask.repeat_interleave(M, 0)   # B*M, L
-
-            text_code = text_code.flatten(0,1)  # B*M, CL
-            # the code has a leading 0, shift left one position so t5 can shift it back
-            # default to -1
-            labels = torch.zeros_like(text_code) - 1
-            labels[:, :-1] = text_code[:, 1:]
-            # replace the padding code with the -100 (ignored when computing loss)
-            labels = labels.masked_fill(labels == -1, -100)
-            logits = self.plm(attention_mask=query_attn_mask, encoder_outputs=encoder_outputs, labels=labels).logits    # B*M, CL, V
-
-            # ignore_index defaults to -100
-            loss = nn.functional.cross_entropy(logits.flatten(0,1), labels.view(-1), reduction="none").view(B, M, -1).mean(-1) # B, M
-            # sum
-            if self.config.reduce_code == "mean":
-                loss = loss.mean()
-            elif self.config.reduce_code == "min":
-                min_loss, min_index = loss.min(-1)
-                loss = min_loss.mean()
-            else:
-                raise NotImplementedError(f"Reduction type {self.config.reduce_code} is not implemented!")
+            raise NotImplementedError(f"Reduction type {self.config.reduce_code} is not implemented!")
         return loss
     
     def generate_code(self, loaders):
@@ -109,11 +75,18 @@ class BOW(DSI):
 
             self.logger.info(f"sorting keywords from {self.config.code_type} and saving at {code_path}...")
 
+            if self.config.get("nbeam", 1) > 1:
+                sorter = BeamDecoder()
+                nseq = self.config.nbeam
+            else:
+                sorter = GreedyCodeSorter()
+                nseq = self.config.get("decode_nseq", 1)
+
             if self.config.is_main_proc:
                 query_codes = np.memmap(
                     code_path,
                     dtype=np.int32,
-                    shape=(len(loader_train.dataset), self.config.code_length),
+                    shape=(len(loader_train.dataset), nseq, self.config.code_length),
                     mode="w+"
                 )
                 # default to -1 to be used as padding
@@ -123,12 +96,9 @@ class BOW(DSI):
                 code_path,
                 dtype=np.int32,
                 mode="r+"
-            ).reshape(len(loader_train.dataset), self.config.code_length)
+            ).reshape(len(loader_train.dataset), nseq, self.config.code_length)
 
-            if self.config.get("nbeam", 1) > 1:
-                sorter = BeamDecoder()
-            else:
-                sorter = GreedyCodeSorter()
+            
             tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
 
             start_idx = 0
@@ -143,22 +113,30 @@ class BOW(DSI):
                 end_idx = start_idx + B
 
                 sorter.search(
-                    text_indices=x["text_idx"].squeeze(1).numpy(),
                     model=self.plm, 
+                    query={**query, "encoder_outputs": encoder_outputs},
                     nbeam=self.config.nbeam, 
                     max_new_tokens=self.config.code_length - 1, 
                     constrain_index=index,
+                    text_indices=x["text_idx"].squeeze(1).numpy(),
                     # forbid early stop as we must generate the entire sequence
                     do_early_stop=False,
-                    **query,
-                    encoder_outputs=encoder_outputs
+                    do_sample=self.config.get("decode_do_sample", False),
+                    num_return_sequences=self.config.get("decode_nseq", 1),
+                    temperature=self.config.get("decode_tau", 1),
                 )
-                res = sorter.beams
+                # print(tokenizer.decode(x["query"]["input_ids"][0], skip_special_tokens=True), tokenizer.batch_decode(sorter.beams[0]))
+                # input()
+
+                res = sorter.beams  # batch_size, nseq, code_length
 
                 # assign query_codes
                 for j, y in enumerate(res):
-                    # there maybe multiple beams for one input, only record the highest scored one
-                    query_codes[qrel_idx[j], :len(y[0])] = y[0]
+                    length = len(y[0])
+                    query_codes[qrel_idx[j], :, :length] = y
+
+                if self.config.get("keep_text_code"):
+                    query_codes[qrel_idx, 0] = x["text_code"].view(B, self.config.code_length).numpy()
 
                 start_idx = end_idx
                 if self.config.debug:
@@ -172,10 +150,11 @@ class BOW(DSI):
                     qrel_idx, query_set_idx, query_idx, text_idx = qrel
                     query_code = query_codes[qrel_idx]
                     text_code = text_codes[text_idx]
-                    if (query_code == text_code).all():
-                        same_count += 1
+                    for qc in query_code:
+                        if (qc == text_code).all():
+                            same_count += 1
             
-                self.logger.info(f"{same_count}/{len(query_codes)} query codes are identical to the text codes!")
+                self.logger.info(f"{same_count}/{query_codes.shape[0] * query_codes.shape[1]} query codes are identical to the text codes!")
 
         else:
             if self.config.code_type == "chat":
@@ -229,62 +208,3 @@ class BOW(DSI):
                 with mp.Pool(thread_num) as p:
                     p.starmap(_get_chatgpt_code, arguments)
     
-
-class BOWR(BOW):
-    """
-    Ranking oriented BOW.
-    """
-    def __init__(self, config):
-        super().__init__(config)
-        # freeze all parameters
-        self.plm.requires_grad_(False)
-        # unfreeze embeddings (the lm_head will also be unfreezed)
-        self.plm.shared.requires_grad_(True)
-
-        # register hook to eliminish gradients for indexes other than eos
-        template = torch.ones(self.plm.shared.weight.shape[0], dtype=torch.bool, device=config.device)
-        template[1] = False
-        def hook(grad):
-            grad[template] = 0
-            return grad
-        self.plm.shared.weight.register_hook(hook)
-
-        self.scorer = torch.nn.Sequential(
-            nn.Linear(self.plm.config.hidden_size, self.plm.config.hidden_size // 2),
-            nn.ReLU(),
-            nn.Linear(self.plm.config.hidden_size // 2, 1)
-        )
-
-
-    def forward(self, x):
-        x = self._move_to_device(x)
-        query = x["query"]
-        query_attn_mask = query["attention_mask"]
-        encoder_outputs = self.plm.encoder(**query)
-
-        text_token_id = x["text_code"]
-        text_attn_mask = (text_token_id != -1).float()
-        # remove -1 because it can not be recognized by the model
-        text_token_id[text_token_id == -1] = 0
-
-        B, M = text_token_id.shape[:2]
-        text_token_id = text_token_id.flatten(0, 1) # B*M, L
-        text_attn_mask = text_attn_mask.flatten(0, 1)
-
-        # repeat query encode outputs to batchify
-        for k, v in encoder_outputs.items():
-            encoder_outputs[k] = v.repeat_interleave(M, 0)
-        query_attn_mask = query_attn_mask.repeat_interleave(M, 0)
-        
-        outputs = self.plm(decoder_input_ids=text_token_id, encoder_outputs=encoder_outputs, attention_mask=query_attn_mask, output_hidden_states=True) # *, L, V
-        token_embedding = outputs.decoder_hidden_states[-1]    # *, L, D
-        
-        valid_token_length = text_attn_mask.sum(dim=-1).long() - 1
-        eos_embedding = token_embedding[range(valid_token_length.shape[0]), valid_token_length]
-        score = self.scorer(eos_embedding).squeeze(-1)  # B*M
-
-        label = torch.zeros(B, device=self.config.device, dtype=torch.long)
-        score = score.view(B, M)
-        loss = nn.functional.cross_entropy(score, label)
-        return loss
-

@@ -108,6 +108,15 @@ def isempty(path:str):
     else:
         return True
 
+def find_mode_in_hydra_config(config: dict):
+    res = None
+    for k, v in config.items():
+        if k == "mode":
+            return v
+        elif isinstance(v, Mapping):
+            res = find_mode_in_hydra_config(v)
+            if res is not None:
+                return res
 
 def update_hydra_config(config:dict):
     """
@@ -125,11 +134,13 @@ def update_hydra_config(config:dict):
     remain_keys = []
     for ok in outer_keys:
         ov = src[ok]
+        matched = False
         for k, v in dest.items():
             if ok in v:
                 # override the same config in the inner config group
                 dest[k][ok] = ov
-        else:
+                matched = True
+        if not matched:
             remain_keys.append(ok)
 
     # if there is still remaining parameters
@@ -490,7 +501,7 @@ def isnumber(x):
         return False
 
 
-def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, init_order:str, post_order:str, stop_words:set, separator:str=" ", stem=False):
+def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, init_order:str, post_order:str, stop_words:set, separator:str=" ", stem=False, filter_num=False, filter_unit=False, weight_path=None):
     """
     Generate code based on json files produced by :func:`models.BaseModel.BaseModel.anserini_index`.
     First reorder the words by ``order``, and tokenize the word sequence by ``tokenizer``.
@@ -503,10 +514,14 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
         end_idx: the ending idx
         tokenizer(transformers.AutoTokenizer)
         max_length: the maximum length of tokens
-        model: {weight, first, rand}
-        order: the word order {weight, lexical, orginal}
+        init_order: how to order the keywords: {weight, first, random}
+        post_order: how to order the keywords that are among top K from the init_order: {random}
         stop_words: some words to exclude
-        separator: used to separate words from words
+        separator: used to separate semantic units
+        stem: use pyserini to stem words?
+        filter_num: filter out all numbers?
+        filter_unit: filter out all tokens with length equal to 1?
+        weight_path: if not None, store the weight of sorted semantic units
     """
     unk_token_id = tokenizer.unk_token_id
     eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
@@ -516,6 +531,13 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
         mode="r+",
         dtype=np.int32
     ).reshape(all_line_count, max_length)
+
+    if weight_path is not None:
+        weights = np.memmap(
+            weight_path,
+            mode="r+",
+            dtype=np.float32
+        ).reshape(all_line_count, max_length)
 
     if separator != " ":
         sep_id = tokenizer.convert_tokens_to_ids(separator)
@@ -538,18 +560,13 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
 
             if len(stop_words):
                 filtered_word_score_pairs = {}
-                if r"\d" in stop_words:
-                    filter_number = True
-                else:
-                    filter_number = False
-
                 for word, score in word_score_pairs.items():
                     if word in stop_words:
                         continue
-                    if filter_number and isnumber(word):
+                    if filter_num and isnumber(word):
                         continue
-                    # if len(word) == 1:
-                    #     continue
+                    if filter_unit and len(word) == 1:
+                        continue
                     else:
                         filtered_word_score_pairs[word] = score
                 word_score_pairs = filtered_word_score_pairs
@@ -565,7 +582,9 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                     
                     if stemmed_word in filtered_word_score_pairs:
                         # pick the maximum score
-                        filtered_word_score_pairs[stemmed_word] = (word, max(score, filtered_word_score_pairs[stemmed_word][1]))
+                        prev_word, prev_score = filtered_word_score_pairs[stemmed_word]
+                        if score > prev_score:
+                            filtered_word_score_pairs[stemmed_word] = (word, score)
                     else:
                         filtered_word_score_pairs[stemmed_word] = (word, score)
                 word_score_pairs = {v[0]: v[1] for v in filtered_word_score_pairs.values()}
@@ -583,12 +602,14 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
             # NOTE: remove any word consisting of unk_token_id
             length = 0
             output = []
+
             for word, score in word_score_pairs:
                 word = word.replace(",", "")
                 encoded = tokenizer.encode(word)
                 if unk_token_id in encoded:
                     continue
-                encoded = tokenizer.encode(word, add_special_tokens=False)
+                # NOTE: for bart tokenizer, add a space to make the first token 
+                encoded = tokenizer.encode(" " + word, add_special_tokens=False)
                 # append sep token id
                 if separator != " ":
                     encoded += [sep_id]
@@ -597,7 +618,7 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                 # NOTE: try to fill all the blanks
                 if 0 < len(encoded) < max_length - 2: 
                     if length + len(encoded) <= max_length - 2:
-                        output.append(encoded)
+                        output.append((encoded, score))
                         length += len(encoded)
                     # else:
                     #     break
@@ -605,13 +626,18 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
             # shuffle
             if post_order == "rand":
                 assert init_order != "rand", "Find init_order and post_order both are rand!"
-                # there will be at most split words in the final code
                 random.shuffle(output)
+            elif post_order is not None:
+                raise NotImplementedError(f"Post order {post_order} not implemented!")
 
-            # concate all encode words
-            output = sum(output, [])
-            output += [eos_token_id]
-            codes[idx, 1: 1+len(output)] = output
+            encodings = [x[0] for x in output]
+            scores = [x[1] for x in output]
+            # concate all encoded words
+            encodings = sum(encodings, []) + [eos_token_id]
+            codes[idx, 1: 1+len(encodings)] = encodings
+
+            if weight_path is not None:
+                weights[idx, :len(scores)] = scores
             pbar.update(1)
         pbar.close()
 
@@ -763,14 +789,14 @@ class Cluster():
         return assignments.squeeze()
 
 
-    def hierarchical_kmeans(self, embeddings:np.ndarray, k:int, leaf_node_num:int=10, **kargs) -> np.ndarray:
+    def hierarchical_kmeans(self, embeddings:np.ndarray, k:int, nleaf:int=10, **kargs) -> np.ndarray:
         """
         Fit and predict by hierarchical kmeans.
 
         Args:
             embeddings
             k: the number of clusters
-            leaf_node_num: the maximum number of nodes in the leaf
+            nleaf: the maximum number of nodes in the leaf
 
         Returns:
             assignments array of [num_samples, num_replicas]
@@ -782,7 +808,7 @@ class Cluster():
             Args:
                 candidates: list of nodes belonging to a specific cluster, each element in it is an offset in the text_embeddings
             """
-            if len(candidates) <= leaf_node_num:
+            if len(candidates) <= nleaf:
                 # when there are only one elements in this cluster, stop adding new ids since the prefix is enough
                 if len(candidates) == 1:
                     return
@@ -898,6 +924,26 @@ class Config(DotDict):
         # skip hidden attributes
         return [(k, v) for k, v in super().items() if k[:9] != "_Config__"]
 
+    def _from_hydra(self, hydra_config:OmegaConf):
+        hydra_config = OmegaConf.to_container(hydra_config)
+        mode = find_mode_in_hydra_config(hydra_config)
+
+        # remove unnecessary training configurations
+        if mode != "train" and "train" in hydra_config:
+            del hydra_config["train"]
+
+        hydra_config = update_hydra_config(hydra_config)
+        # flatten the config object
+        config = flatten_hydra_config(hydra_config)
+        for k, v in config.items():
+            setattr(self, k, v)
+
+        self.__post_init__()
+        if "__remaining" in hydra_config:
+            self.logger.warning(f"Configs not contained in default config groups with be set: {hydra_config['__remaining']}")
+
+        self.logger.info(f"Config: {self}")
+
     def __post_init__(self):
         self._set_distributed()
         # attributed starting with __ and set inside the class method is invisible to the outside, and cannot be saved by pickle
@@ -911,16 +957,16 @@ class Config(DotDict):
         # TODO: use hydra optional config
         self.cache_root = os.path.join("data", "cache", self.dataset)
 
-        if self.mode not in ["train", "script"] and self.load_ckpt is None:
+        # scripts do not have mode
+        if self.mode != "train" and self.get("load_ckpt", "none") is None:
             self.load_ckpt = "best"
-        if self.mode in ["encode", "encode-query", "encode-text"]:
-            self.save_encode = True
-        if self.mode == "train" and self.debug:
-            self.eval_step = 10
-            self.eval_delay = 0
-            self.save_ckpt = "debug"
-            self.save_index = False
-            self.save_encode = False
+        if self.mode == "train":
+            if self.debug:
+                self.eval_step = 10
+                self.eval_delay = 0
+                self.save_ckpt = "debug"
+                self.save_index = False
+                self.save_encode = False
         
     def _set_distributed(self):
         """
@@ -1009,19 +1055,6 @@ class Config(DotDict):
         torch.manual_seed(seed)
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-
-    def _from_hydra(self, hydra_config:OmegaConf):
-        hydra_config = update_hydra_config(OmegaConf.to_container(hydra_config))
-        # flatten the config object
-        config = flatten_hydra_config(hydra_config)
-        for k, v in config.items():
-            setattr(self, k, v)
-
-        self.__post_init__()
-        if "__remaining" in hydra_config:
-            self.logger.info(f"Incoming configs will be set: {hydra_config['__remaining']}")
-
-        self.logger.info(f"Config: {self}")
 
     @property
     def rank(self):

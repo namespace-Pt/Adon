@@ -6,8 +6,6 @@ defaults:
   - _default
   # add group package so the default list can be overriden from cli by name
   - /base@_group_: MSMARCO-passage
-  - /mode@_group_: script
-  - _self_
 
 query_set: [train]
 neg_type: BM25

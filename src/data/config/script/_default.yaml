@@ -1,3 +1,5 @@
 defaults:
   # essential to relocate the package
-  - /_default@_group_
+  - /_default
+
+mode: script

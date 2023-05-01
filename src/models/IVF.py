@@ -3,9 +3,6 @@ import faiss
 import torch
 import numpy as np
 import torch.nn as nn
-import torch.nn.functional as F
-from tqdm import tqdm
-from transformers import AutoModel
 from .BaseModel import BaseSparseModel
 from .UniCOIL import UniCOIL
 from utils.util import BaseOutput, synchronize

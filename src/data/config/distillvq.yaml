@@ -26,7 +26,7 @@ model:
 index:
   index_type: OPQ96,PQ96x8
 
-mode:
+train:
   distill_src: RetroMAE
   enable_distill: bi
 
@@ -39,4 +39,5 @@ mode:
   learning_rate_ivf: 1e-4
   scheduler: linear
 
+eval:
   eval_posting_length: true

@@ -30,4 +30,5 @@ if __name__ == "__main__":
 
     ground_truth = load_pickle(os.path.join(config.cache_root, "dataset", "query", config.eval_set, "positives.pkl"))
     metrics = compute_metrics(retrieval_result, ground_truth, metrics=config.eval_metric, cutoffs=config.eval_metric_cutoff)
+    print()
     print(metrics)

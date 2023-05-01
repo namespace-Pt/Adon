@@ -1,5 +1,7 @@
+# @package _global_.train
 defaults:
-  - _eval
+  - _eval # load the configs
+
 mode: train
 
 # default to use negative 
@@ -8,7 +10,32 @@ loader_train: neg
 train_set: [train]
 
 epoch: 20
-batch_size: 32
+# the total batch size
+batch_size: 128
+# mixed precision
+fp16: false
+bf16: false
+# gradient accumulation
+grad_accum_step: 1
+# Stop training when the evaluation results is inferior to the best one for ? times.
+early_stop_patience: 5
+# clip grad
+max_grad_norm: 0
+# maximum steps for training
+max_step: 0
+# wandb
+report_to: none
+# deepspeed configuration file path
+deepspeed: null
+
+learning_rate: 3e-6
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_epsilon: 1e-8
+weight_decay: 0.01
+scheduler: constant
+warmup_ratio: 0.1
+warmup_step: 0
 
 main_metric: Recall@10
 # interval of testing the model performance
@@ -18,32 +45,17 @@ eval_delay: 0
 # if true, save the model after validation
 # otherwise, only store the ever-best performance model
 save_at_eval: false
-# gradient accumulation
-accumulate_step: 1
-# Stop training when the evaluation results is inferior to the best one for ? times.
-early_stop_patience: 5
 
-# mixed precision
-fp16: false
 
-learning_rate: 3e-6
-adam_beta1: 0.9
-adam_beta2: 0.999
-adam_epsilon: 1e-8
-weight_decay: 0.01
-
-scheduler: constant
-warmup_ratio: 0.1
-warmup_steps: 0
-max_grad_norm: 0
-
+# how many hard negatives to use?
 neg_num: 1
+# what kind of hard negatives to use?
 neg_type: BM25
-
+# use inbatch negative?
 enable_inbatch_negative: true
-# if true, gather all the embeddings across processes in distributed training
+# gather all the embeddings across processes in distributed training?
 enable_all_gather: true
-
 # distillation
 enable_distill: false
+# distill from which model?
 distill_src: none

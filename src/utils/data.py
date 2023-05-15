@@ -93,6 +93,9 @@ class TextDataset(BaseDataset):
                 mode="r",
                 dtype=np.int32
             ).reshape(self.text_num, config.code_length)
+            # set code_size here
+            if self.config.get("code_size") is None:
+                self.config.code_size = max(self.text_codes.max() - self.config.vocab_size + 1, 0)
 
         if config.get("return_embedding"):
             self.text_embeddings = np.memmap(
@@ -237,8 +240,7 @@ class QueryDataset(BaseDataset):
 
         elif config.data_format == "raw":
             queries = []
-            load_query = load_query.split("-")[0]
-            with open(os.path.join(config.data_root, config.dataset, f"queries.{load_query}.tsv")) as f:
+            with open(os.path.join(config.data_root, config.dataset, f"queries.{query_set}.tsv")) as f:
                 for line in f:
                     query = line.strip().split("\t")[1]
                     queries.append(query)
@@ -409,9 +411,9 @@ class TrainDataset(BaseDataset):
         else:
             negatives = load_pickle(negative_path)
             for k, v in negatives.items():
-                neg_num = len(v)
-                if neg_num < self.config.neg_num:
-                    negatives[k] = v + choices(v, k=self.config.neg_num - neg_num)
+                nneg = len(v)
+                if nneg < self.config.nneg:
+                    negatives[k] = v + choices(v, k=self.config.nneg - nneg)
                 else:
                     # only use the first 200 negatives
                     negatives[k] = v[:200]
@@ -437,7 +439,7 @@ class TrainDataset(BaseDataset):
         """
         qrel_idx, query_set_idx, query_idx, pos_text_idx = self.qrels[index]
         if self.config.neg_type != "none":
-            neg_text_idx = sample(self.negatives[query_set_idx][query_idx], self.config.neg_num)
+            neg_text_idx = sample(self.negatives[query_set_idx][query_idx], self.config.nneg)
         else:
             neg_text_idx = []
         text_idx = np.array([pos_text_idx] + neg_text_idx)  # 1 + N
@@ -453,7 +455,7 @@ class TrainDataset(BaseDataset):
 
         if self.config.get("return_prefix_mask"):
             text_code = return_dict["text_code"]
-            text_code_prefix_mask = np.ones((1 + self.config.neg_num, self.config.code_length), dtype=np.int64)
+            text_code_prefix_mask = np.ones((1 + self.config.nneg, self.config.code_length), dtype=np.int64)
             # ignore the leading 0
             pos_text_code = text_code[0]
             for i in range(1, len(text_code)):
@@ -477,10 +479,12 @@ class TrainDataset(BaseDataset):
             return_dict["pair"] = pair
         
         if self.config.get("return_query_code"):
-            # FIXME: here is a displeasing workaround
-            # we need to maintain a query-text table to generate multiple codes for multiple texts
-            return_dict["query_code"] = self.query_codes[query_set_idx][qrel_idx].astype(np.int64)
-        
+            query_code = self.query_codes[query_set_idx][qrel_idx].astype(np.int64)
+            if self.config.get("keep_text_code"):
+                assert len(return_dict["text_code"]) == 1, "Make sure there's only one text when setting keep_text_code=True!"
+                query_code = np.concatenate([return_dict["text_code"], query_code], axis=0)
+            return_dict["query_code"] = query_code
+
         if self.config.get("permute_code") is not None and self.config.permute_code > 0:
             # there must be only one text
             if "query_code" in return_dict:
@@ -572,15 +576,15 @@ class PairDataset(BaseDataset):
         labels = []
         for i, query_dataset in enumerate(query_datasets):
             query_set = query_dataset.query_set
-            if os.path.exists(os.path.join(self.cache_dir, "query", query_set, f"candidates_{config.candidate_type}.pkl")):
-                candidate_path = os.path.join(self.cache_dir, "query", query_set, f"candidates_{config.candidate_type}.pkl")
+            if os.path.exists(os.path.join(self.cache_dir, "query", query_set, f"candidates_{config.cand_type}.pkl")):
+                candidate_path = os.path.join(self.cache_dir, "query", query_set, f"candidates_{config.cand_type}.pkl")
                 qrel, label = self.init_pair(i, candidate_path)
-            elif os.path.exists(os.path.join(config.cache_root, "retrieve", config.candidate_type, query_set, "retrieval_result.pkl")):
-                candidate_path = os.path.join(config.cache_root, "retrieve", config.candidate_type, query_set, "retrieval_result.pkl")
+            elif os.path.exists(os.path.join(config.cache_root, "retrieve", config.cand_type, query_set, "retrieval_result.pkl")):
+                candidate_path = os.path.join(config.cache_root, "retrieve", config.cand_type, query_set, "retrieval_result.pkl")
                 positive_path = os.path.join(config.cache_root, "dataset", "query", query_set, "positives.pkl")
                 qrel, label = self.init_pair(i, candidate_path, positive_path)
             else:
-                raise FileNotFoundError(f"Invalid Candidate Type {config.candidate_type}")
+                raise FileNotFoundError(f"Invalid Candidate Type {config.cand_type}")
             # each qrel now have three elements: (query_set_idx, query_idx, text_idx)
             qrels.extend(qrel)
             labels.extend(label)
@@ -599,7 +603,7 @@ class PairDataset(BaseDataset):
 
         for qidx, candidates in tqdm(candidates.items(), ncols=100, leave=False):
             if positive_path:
-                candidates = candidates[:self.config.candidate_num_train] if self.mode == "train" else candidates[:self.config.candidate_num]
+                candidates = candidates[:self.config.ncand_train] if self.mode == "train" else candidates[:self.config.ncand]
                 has_pos = False
                 for i, candidate in enumerate(candidates):
                     qrels.append((query_set_idx, qidx, candidate))

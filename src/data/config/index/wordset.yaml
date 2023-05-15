@@ -19,4 +19,5 @@ early_stop_start_len: 0
 beam_trsd: 0
 # how many steps to examine threshold
 trsd_start_len: 0
-
+# sample instead of topk?
+decode_do_sample: false

@@ -10,6 +10,7 @@ from .BaseModel import BaseGenerativeModel
 class SEAL(BaseGenerativeModel):
     def __init__(self, config):
         super().__init__(config)
+        assert "bart" in self.config.plm
         self.plm = AutoModelForSeq2SeqLM.from_pretrained(self.config.plm_dir)
 
 
@@ -31,7 +32,9 @@ class SEAL(BaseGenerativeModel):
 
             tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
 
-            if not self.config.load_collection:
+            if (self.config.load_index and os.path.exists(index_path + ".oth")) or (self.config.load_collection and os.path.exists(collection_path)):
+                pass
+            else:
                 assert self.config.get("title_col") is not None, "Must specify title column index!"
                 loader_text = loaders["text"]
                 with open(f"{self.config.data_root}/{self.config.dataset}/collection.tsv") as f, \

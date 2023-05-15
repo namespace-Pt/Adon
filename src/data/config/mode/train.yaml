@@ -48,7 +48,7 @@ save_at_eval: false
 
 
 # how many hard negatives to use?
-neg_num: 1
+nneg: 1
 # what kind of hard negatives to use?
 neg_type: BM25
 # use inbatch negative?

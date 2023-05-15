@@ -57,7 +57,7 @@ def init_query_and_qrel(query_path:str, qrel_path:str, cache_dir:str, tid2index:
     print("valid query number: {}".format(len(valid_queries)))
 
     qid2index = {}
-    has_invalid = False
+    invalid_count = 0
     tmp_query_path = ".".join([*query_path.split(".")[:-1], "tmp", "tsv"])
     
     with open(query_path, "r", encoding="utf-8") as f, \
@@ -65,15 +65,15 @@ def init_query_and_qrel(query_path:str, qrel_path:str, cache_dir:str, tid2index:
         for i, line in enumerate(tqdm(f, desc="Removing Missing Queries", ncols=100, leave=False)):
             query_id = line.split('\t')[0]
             if query_id not in valid_queries:
-                has_invalid = True
+                invalid_count += 1
                 continue
             qid2index[query_id] = len(qid2index)
             g.write(line)
 
-    if has_invalid:
+    if invalid_count > 0:
         # backup queries that appear in the query file but not in the qrel file
         backup_query_path = ".".join([*query_path.split(".")[:-1], "backup", "tsv"])
-        print(f"There are queries that appear in the query file but not in the qrel file! The original query file is saved at {backup_query_path}")
+        print(f"There are {invalid_count} queries that appear in the query file but not in the qrel file! The original query file is saved at {backup_query_path}.")
         os.rename(query_path, backup_query_path)
     else:
         os.remove(query_path)

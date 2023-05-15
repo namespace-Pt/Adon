@@ -21,10 +21,11 @@ train:
   # only query-pos pair
   neg_type: none
   epoch: 50
+  batch_size: 400
+  bf16: true
 
   learning_rate: 1e-3
   scheduler: linear
-  batch_size: 400
   eval_delay: 20e
   early_stop_patience: 5
   main_metric: MRR@10

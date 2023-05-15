@@ -3,16 +3,7 @@ defaults:
   - _default
   - base: NQ-open
   - model: _default
-  - eval: retrieve
   - mode: eval
-  # add _self_ here so that the following arguments can be rewritten
-  - _self_
-
-eval:
-  verifier_type: pq
-  verifier_src: DistillVQ_d-AR2
-  verifier_index: OPQ96,PQ96x8
-
 
 model:
   model_type: uniretriever
@@ -39,3 +30,8 @@ model:
   y_eval_flops: false
   x_eval_posting_length: true
   y_eval_posting_length: true
+
+eval:
+  verifier_type: pq
+  verifier_src: DistillVQ_d-AR2
+  verifier_index: OPQ96,PQ96x8

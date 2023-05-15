@@ -18,6 +18,7 @@ model:
   nbeam: 10
 
 train:
+  bf16: true
   # only query-pos pair
   neg_type: none
   
@@ -32,5 +33,5 @@ train:
 
 code:
   code_type: title
-  code_length: 34
+  code_length: 26
 

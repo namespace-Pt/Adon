@@ -124,27 +124,31 @@ class BM25(BaseSparseModel):
             synchronize()
             
             bm25_index = IndexReader(os.path.join(self.index_dir, "index"))
+            if self.config.get("use_tfidf"):
+                doc_count = bm25_index.stats()["documents"]
+
             with open(input_path, "w") as f:
                 for i in tqdm(range(start_idx, end_idx), leave=False, ncols=100, desc="Collecting DFs"):
                     x = loader_text.dataset[i]
+                    text_idx = str(x["text_idx"])
 
-                    text_idx = x["text_idx"]
-                    text_token_id = x["text"]["input_ids"]
-                    tokens = tokenizer.convert_ids_to_tokens(text_token_id, skip_special_tokens=True)
-                    tokens = [token for token in tokens if token not in stop_words]
-                    
-                    words = tokenizer.convert_tokens_to_string(tokens).split(" ")
+                    doc = bm25_index.get_document_vector(text_idx)
+                    if self.config.get("use_tfidf"):
+                        doc_len = sum(doc.values())
+
                     word_weight_pairs = {}
-                    for word in words:
-                        # NOTE: the word is always lowercased
-                        word = word.lower()
+                    for word in doc:
                         if word[-1] in punctuations:
-                            word = word[:-1]
+                            continue
                         if word not in word_weight_pairs:
                             # NOTE: set analyzer to None because this is a pretokenized index
-                            word_weight_pairs[word] = round(bm25_index.compute_bm25_term_weight(str(text_idx), word, analyzer=None), 3)
+                            if self.config.get("use_tfidf"):
+                                df = bm25_index.get_term_counts(word, analyzer=None)[0]
+                                word_weight_pairs[word] = round(doc[word] / doc_len * math.log(doc_count / df), 3)
+                            else:
+                                word_weight_pairs[word] = round(bm25_index.compute_bm25_term_weight(text_idx, word, analyzer=None), 3)
 
-                    doc_vec = {"id": text_idx, "vector": word_weight_pairs}
+                    doc_vec = {"id": int(text_idx), "vector": word_weight_pairs}
                     f.write(json.dumps(doc_vec) + "\n")
         
         code_fields = self.config.code_type.split("-")

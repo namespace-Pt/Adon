@@ -20,7 +20,7 @@ index:
   index_type: Flat
 
 train:
-  neg_num: 15
+  nneg: 15
   learning_rate: 2e-5
   scheduler: linear
   

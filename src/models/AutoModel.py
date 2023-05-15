@@ -13,7 +13,6 @@ from .DPR import DPR
 from .IVF import IVF, TopIVF, TokIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
-from .Sequer import Sequer
 from .SEAL import SEAL
 from .RankT5 import RankT5
 from .CrossEnc import CrossEncoder
@@ -36,8 +35,6 @@ MODEL_MAP = {
     "genre": GENRE,
     "ivf": IVF,
     "rankt5": RankT5,
-    "seq2seq": Sequer,
-    "sequer": Sequer,
     "sparta": SPARTA,
     "spladev2": SPLADEv2,
     "seal": SEAL,

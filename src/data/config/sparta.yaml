@@ -18,7 +18,7 @@ index:
   save_index: false
 
 train:
-  neg_num: 7
+  nneg: 7
   learning_rate: 3e-5
 
 eval:

@@ -14,7 +14,7 @@ model:
   token_dim: 32
 
 train:
-  neg_num: 7
+  nneg: 7
 
 eval:
   eval_posting_length: true

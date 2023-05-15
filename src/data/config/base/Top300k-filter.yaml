@@ -1,0 +1,15 @@
+defaults:
+  - _default
+
+dataset: Top300k-filter
+text_length: 512
+query_length: 64
+
+max_text_length: 512
+max_query_length: 64
+
+plm: t5
+
+# title + abstract
+text_col: [1, 2, 3]
+text_col_sep: " "

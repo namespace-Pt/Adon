@@ -1614,7 +1614,7 @@ class WordSetIndex(BaseIndex):
                 valid_tokens = valid_word_tokens[valid_word_idx][:, prefix_len]
             else:
                 valid_tokens = self.vocab.get_valid_tokens(prefix)
-        
+
         # t3 = time.time()
         # print(t2-t1, t3-t2)
         return valid_tokens
@@ -1828,17 +1828,20 @@ class BeamDecoder():
             beams.append(beam)
             index = 0
         else:
+            # in wordset setting, one text may be added to beams multiple times, only keep the best one
+            # use np.array_equal to test equivalence to include element-wise equal and shape-wise equal
+            if self.constrain_index_type == "wordset":
+                for i, x in enumerate(beams):
+                    if isinstance(text_idx, np.ndarray) and np.array_equal(text_idx, x[-2]) or isinstance(text_idx, list) and text_idx == x[-2]:
+                        # when the stored score is bigger, keep it and return
+                        if score < x[1]:
+                            return i
+                        # when the stored score is smaller, drop it
+                        else:
+                            del beams[i]
+                            break
+            
             for i, x in enumerate(beams):
-                # in wordset setting, one text may be added to beams multiple times, only keep the best one
-                # use np.array_equal to test equivalence to include element-wise equal and shape-wise equal
-                if isinstance(text_idx, np.ndarray) and np.array_equal(text_idx, x[-2]) or isinstance(text_idx, list) and text_idx == x[-2]:
-                    if score > x[1]:
-                        beams[i] = beam
-                        index = i
-                        break
-                    else:
-                        index = -1
-                        break
                 # when the current hypothesis's score is bigger than the stored one, insert it
                 if score > x[1]:
                     beams.insert(i, beam)
@@ -1846,11 +1849,10 @@ class BeamDecoder():
                     # very important, find the right place and exit
                     # otherwise causes infinite loop
                     break
-            else:
+            if index == -1:
                 # when the current hypothesis's score is the smallest, just append it at the tail
                 beams.append(beam)
                 index = i + 1
-        
         return index
     
     def _finalize(self):
@@ -2407,6 +2409,7 @@ class BeamDecoder():
             # t3 = time.time()
             # 4. find next token
             next_beam_scores = scores + beam_scores[:, None]
+            # next_beam_scores = scores
             # reshape for beam search
             vocab_size = next_beam_scores.shape[-1]
             next_beam_scores = next_beam_scores.view(self.batch_size, -1) # (batch_size, num_beams * vocab_size)
@@ -2436,7 +2439,10 @@ class BeamDecoder():
 
             # t5 = time.time()
             # print(input_ids)
+            # print(beam_scores)
             # print(tokenizer.batch_decode(input_ids))
+            # print(self.beams)
+            # input()
             # try:
             #     print(self.prev_words)
             #     # print(self.prefixes)

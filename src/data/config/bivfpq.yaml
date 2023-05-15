@@ -3,18 +3,10 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: _default
-  - eval: retrieve
-  # add _self_ here so that the following arguments can be rewritten
-  - _self_
+  - mode: eval
 
 base:
-  mode: eval
   text_col: [1, 2]
-
-eval:
-  verifier_type: pq
-  verifier_src: DistillVQ_d-RetroMAE
-  verifier_index: OPQ96,PQ96x8
 
 model:
   return_embedding: true
@@ -41,3 +33,8 @@ model:
   y_eval_flops: false
   x_eval_posting_length: true
   y_eval_posting_length: true
+
+eval:
+  verifier_type: pq
+  verifier_src: DistillVQ_d-RetroMAE
+  verifier_index: OPQ96,PQ96x8

@@ -15,23 +15,33 @@ base:
 
 model:
   model_type: sequer
-  train_scheme: contra+gen
+  train_scheme: contra
   # how to rank when evaluating
   rank_type: eos
   # beam size
   nbeam: 10
+
+index:
   # threshold for relaxed beam search
   beam_trsd: 0
   trsd_start_len: 3
 
 train:
+  epoch: 50
+  batch_size: 64
   learning_rate: 3e-5
-  neg_type: ANCE
-  neg_num: 10
-  main_metric: Recall@10
+  neg_type: BM25
+  nneg: 23
+  main_metric: MRR@10
   return_prefix_mask: true
+  bf16: true
+
+eval:
+  eval_mode: rerank
+  cand_type: BM25
+  ncand: 100
 
 code:
-  code_type: words_comma
-  code_length: 34
+  code_type: words_comma_plus_stem
+  code_length: 26
   code_sep: ","

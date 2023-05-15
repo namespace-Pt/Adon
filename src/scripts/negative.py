@@ -35,8 +35,8 @@ if __name__ == "__main__":
                     continue
                 hard_negatives[k].append(x)
 
-        neg_nums = np.array([len(x) for x in hard_negatives.values()])
-        print(f"the collected query number is {len(hard_negatives)}, whose negative number is MEAN: {np.round(neg_nums.mean(), 1)}, MAX: {neg_nums.max()}, MIN: {neg_nums.min()}")
+        nnegs = np.array([len(x) for x in hard_negatives.values()])
+        print(f"the collected query number is {len(hard_negatives)}, whose negative number is MEAN: {np.round(nnegs.mean(), 1)}, MAX: {nnegs.max()}, MIN: {nnegs.min()}")
 
         if config.save_name != "default":
             save_name = config.save_name

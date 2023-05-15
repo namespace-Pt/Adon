@@ -14,5 +14,5 @@ language: eng
 k1: 0.82
 b: 0.68
 pretokenize: false
-granularity: null
+granularity: word
 

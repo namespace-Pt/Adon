@@ -32,7 +32,7 @@ train:
 
   epoch: 50
   batch_size: 128
-  neg_num: 31
+  nneg: 31
 
   learning_rate: 1e-5
   learning_rate_pq: 1e-4

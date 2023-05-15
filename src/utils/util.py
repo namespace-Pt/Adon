@@ -23,6 +23,8 @@ def mean_len(i:Iterable):
 def mean(i:Iterable):
     return sum(i) / len(i)
 
+def softmax(x):
+    return np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum()
 
 def load_pickle(path:str):
     """
@@ -414,7 +416,7 @@ def compute_metrics_nq(retrieval_result:RETRIEVAL_MAPPING, query_answer_path:str
     return validate(retrieval_result, answers, collection, num_workers=8, batch_size=8)
 
 
-def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, title_col_idx=1, separator:str=" "):
+def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, title_col:list, stop_words:set, separator:str=" ", dedup=False, stem=False, filter_num=False, filter_unit=False):
     """
     Generate code based on titles of the NQ dataset. Add a padding token at the head.
 
@@ -426,7 +428,9 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
         end_idx: the ending offset
         tokenizer(transformers.AutoTokenizer)
         max_length: the maximum length of tokens
-        title_col_idx: which column is title?
+        text_col: the columns for title and others
+        stop_words: the words to exclude
+        separator
 
     Returns:
         the populated memmap file
@@ -434,16 +438,21 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
     unk_token_id = tokenizer.unk_token_id
     eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
     
-    token_ids = np.memmap(
+    codes = np.memmap(
         output_path,
-        shape=(all_line_count, max_length),
         mode="r+",
         dtype=np.int32
-    )
+    ).reshape(all_line_count, max_length)
+
     if separator != " ":
         sep_id = tokenizer.convert_tokens_to_ids(separator)
         assert sep_id != unk_token_id
         separator += " "
+    
+    if stem:
+        from pyserini.analysis import Analyzer, get_lucene_analyzer
+        # Default analyzer for English uses the Porter stemmer:
+        analyzer = Analyzer(get_lucene_analyzer())
 
     with open(input_path, 'r') as f:
         pbar = tqdm(total=end_idx-start_idx, desc="Tokenizing", ncols=100, leave=False)
@@ -452,43 +461,58 @@ def _get_title_code(input_path:str, output_path:str, all_line_count:int, start_i
                 continue
             if idx >= end_idx:
                 break
-            
-            fields = [x.strip() for x in line.split("\t")]
-            title = fields[title_col_idx]
 
-            # remove extra spaces and lowercase
-            title = tokenizer.decode(tokenizer.encode(title, add_special_tokens=False), skip_special_tokens=True).strip().lower()
+            fields = line.split("\t")
+            tid = fields[0]
+            title = " ".join([x.strip() for i, x in enumerate(fields) if i in title_col])
+            # keep only the first 2*max_length words
+            title = " ".join(title.split(" ")[:2 * max_length]).lower()
  
-            # some title only contains one word and will be tokenized as unk_token
-            if len(title) == 0:
-                title =  " ".join(fields[title_col_idx + 1].split(" ")[:5])
-                # remove extra spaces and lowercase
-                title = tokenizer.decode(tokenizer.encode(title, add_special_tokens=False), skip_special_tokens=True).strip().lower()
-
             words = title.split(" ")
-            
+
+            # NOTE: remove any word consisting of unk_token_id
             length = 0
             output = []
+            encodings = set()
+
             for word in words:
-                word = word.replace(",", "")
-                encoded = tokenizer.encode(word)
-                # ignore unk_tokens
+                if filter_num and isnumber(word):
+                    continue
+                if filter_unit and len(word) == 1:
+                    continue
+
+                word = word.replace(separator[0], "")
+                # NOTE: for bart tokenizer, add a space to make the first token 
+                encoded = tokenizer.encode(" " + word, add_special_tokens=False, return_tensors="np")
+                # FIXME: deal with unk
                 if unk_token_id in encoded:
                     continue
-                encoded = tokenizer.encode(word, add_special_tokens=False)
+
                 # append sep token id
                 if separator != " ":
                     encoded += [sep_id]
 
+                # forbid very long words to take up all code length
+                # NOTE: try to fill all the blanks
                 if 0 < len(encoded) < max_length - 2: 
+                    # NOTE: make sure encoded is not in previously encoded (encodings) because maybe two words are the same after tokenization
+                    # list is unhashable, convert it to tuple
+                    encoding = tuple(encoded)
                     if length + len(encoded) <= max_length - 2:
-                        output.extend(encoded)
-                        length += len(encoded)
-                    else:
-                        break
+                        if dedup and encoding in encodings:
+                            continue
+                        else:
+                            # when no deduplication or no duplication
+                            output.append(encoded)
+                            encodings.add(encoding)
+                            length += len(encoded)
+            
+            if len(output) == 0:
+                raise ValueError(f"Found empty title in {line}")
 
-            output += [eos_token_id]
-            token_ids[idx, 1: 1 + len(output)] = output
+            # concate all encoded words
+            encodings = sum(output, []) + [eos_token_id]
+            codes[idx, 1: 1+len(encodings)] = encodings
             pbar.update(1)
         pbar.close()
 
@@ -514,7 +538,7 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
         end_idx: the ending idx
         tokenizer(transformers.AutoTokenizer)
         max_length: the maximum length of tokens
-        init_order: how to order the keywords: {weight, first, random}
+        init_order: how to order the keywords: {weight, first, random, sample}
         post_order: how to order the keywords that are among top K from the init_order: {random}
         stop_words: some words to exclude
         separator: used to separate semantic units
@@ -596,20 +620,26 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
             elif init_order == "rand":
                 word_score_pairs = list(word_score_pairs.items())
                 random.shuffle(word_score_pairs)
+            elif init_order == "sample":
+                # sample by weights
+                scores = np.array(list(word_score_pairs.values()))
+                indices = np.random.choice(len(word_score_pairs), len(word_score_pairs), replace=False, p=softmax(scores))
+                word_score_pairs_list = list(word_score_pairs.items())
+                word_score_pairs = [word_score_pairs_list[x] for x in indices]
             else:
                 raise NotImplementedError(f"Init code order {init_order} not implemented!")
 
             # NOTE: remove any word consisting of unk_token_id
             length = 0
             output = []
+            encodings = set()
 
             for word, score in word_score_pairs:
-                word = word.replace(",", "")
-                encoded = tokenizer.encode(word)
-                if unk_token_id in encoded:
-                    continue
+                word = word.replace(separator[0], "")
                 # NOTE: for bart tokenizer, add a space to make the first token 
                 encoded = tokenizer.encode(" " + word, add_special_tokens=False)
+                if unk_token_id in encoded:
+                    continue
                 # append sep token id
                 if separator != " ":
                     encoded += [sep_id]
@@ -617,8 +647,12 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                 # forbid very long words to take up all code length
                 # NOTE: try to fill all the blanks
                 if 0 < len(encoded) < max_length - 2: 
-                    if length + len(encoded) <= max_length - 2:
+                    # NOTE: make sure encoded is not in previously encoded (encodings) because maybe two words are the same after tokenization
+                    # list is unhashable, convert it to tuple
+                    encoding = tuple(encoded)
+                    if length + len(encoded) <= max_length - 2 and encoding not in encodings:
                         output.append((encoded, score))
+                        encodings.add(encoding)
                         length += len(encoded)
                     # else:
                     #     break
@@ -821,12 +855,6 @@ class Cluster():
             candidate_embedding = embeddings[candidates]   # C, D
 
             new_pred = self.kmeans(candidate_embedding, k)
-
-            # nonlocal pre_candidate_num
-            # candidate_num = len(candidates)
-            # if candidate_num == pre_candidate_num:
-            #     print(candidates)
-            # pre_candidate_num = candidate_num
 
             for i in range(k):
                 children = []

@@ -97,13 +97,12 @@ class BOW(DSI):
                 dtype=np.int32,
                 mode="r+"
             ).reshape(len(loader_train.dataset), nseq, self.config.code_length)
-
             
             tokenizer = AutoTokenizer.from_pretrained(os.path.join(self.config.plm_root, self.config.code_tokenizer))
 
             start_idx = 0
             for i, x in enumerate(tqdm(loader_train, leave=False, ncols=100)):
-                # if i < 49:
+                # if i < 69198:
                 #     continue
                 qrel_idx = x["qrel_idx"]
                 query = self._move_to_device(x["query"])
@@ -134,9 +133,6 @@ class BOW(DSI):
                 for j, y in enumerate(res):
                     length = len(y[0])
                     query_codes[qrel_idx[j], :, :length] = y
-
-                if self.config.get("keep_text_code"):
-                    query_codes[qrel_idx, 0] = x["text_code"].view(B, self.config.code_length).numpy()
 
                 start_idx = end_idx
                 if self.config.debug:

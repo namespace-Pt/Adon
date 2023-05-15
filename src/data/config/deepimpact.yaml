@@ -19,5 +19,5 @@ index:
   granularity: word
 
 train:
-  neg_num: 7
+  nneg: 7
   max_grad_norm: 2.0

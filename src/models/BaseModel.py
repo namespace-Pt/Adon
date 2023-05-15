@@ -334,7 +334,7 @@ class BaseModel(nn.Module):
         if self.config.is_main_proc:
             save_pickle("this is a lock", lock_path)
 
-        self.logger.info("saving retrieval results...")
+        self.logger.info(f"saving retrieval results at {retrieval_result_path}...")
 
         if self.config.is_distributed:
             local_retrieval_result_path = f"{retrieval_result_path}.{self.config.rank}"
@@ -694,7 +694,10 @@ class BaseSparseModel(BaseModel):
         if self.config.index_type == "impact":
             self.index_dir = os.path.join(self.index_dir, self.config.granularity)
         elif self.config.index_type == "bm25":
-            self.index_dir = os.path.join(self.index_dir, "pretokenize" if self.config.pretokenize else "default")
+            if self.config.pretokenize:
+                self.index_dir = os.path.join(self.index_dir, self.config.granularity)
+            else:
+                self.index_dir = os.path.join(self.index_dir, "default")
 
 
     def _compute_overlap(self, query_token_id:TENSOR, text_token_id:TENSOR) -> TENSOR:
@@ -1830,7 +1833,7 @@ class BaseGenerativeModel(BaseModel):
         tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
-            # if not (x["query_idx"].unsqueeze(-1) == torch.tensor([21,32])).any():
+            # if not (x["query_idx"].unsqueeze(-1) == torch.tensor([1466])).any():
             #     continue
 
             query = self._move_to_device(x["query"])

@@ -17,4 +17,4 @@ model:
 train:
   batch_size: 16
   learning_rate: 3e-5
-  neg_num: 7
+  nneg: 7

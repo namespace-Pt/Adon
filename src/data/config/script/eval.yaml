@@ -8,5 +8,6 @@ defaults:
   - /base@_group_: MSMARCO-passage
   - /mode@_here_:
     - _eval
+  - _self_
 
 src: ???

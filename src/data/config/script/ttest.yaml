@@ -7,6 +7,7 @@ defaults:
   # add group package so the default list can be overriden from cli by name
   - /base@_group_: MSMARCO-passage
   - /mode@_group_: script
+  - _self_
 
 x_model: ???
 y_model: ???

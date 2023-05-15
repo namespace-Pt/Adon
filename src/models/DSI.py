@@ -55,6 +55,7 @@ class GENRE(DSI):
 
         assert self.config.code_type == "title"
         if self.config.is_main_proc:
+            from utils.util import _get_title_code, makedirs
             # the code is bind to the plm_tokenizer
             code_path = os.path.join(self.config.cache_root, "codes", self.config.code_type, self.config.code_tokenizer, str(self.config.code_length), "codes.mmp")
             # all codes are led by 0 and padded by -1
@@ -62,10 +63,6 @@ class GENRE(DSI):
 
             loader_text = loaders["text"]
             text_num = len(loader_text.dataset)
-
-            from utils.util import _get_title_code, makedirs
-
-            collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
             makedirs(code_path)
 
             # load all saved token ids
@@ -87,14 +84,30 @@ class GENRE(DSI):
             text_codes[:, 0] = start_token_id
             text_codes[:, 1:] = -1            
 
+            collection_path = os.path.join(self.config.data_root, self.config.dataset, "collection.tsv")
             preprocess_threads = 10
-            all_line_count = text_num
 
             arguments = [] 
             for i in range(preprocess_threads):
-                start_idx = round(all_line_count * i / preprocess_threads)
-                end_idx = round(all_line_count * (i+1) / preprocess_threads)
-                arguments.append((collection_path, code_path, all_line_count, start_idx, end_idx, tokenizer, self.config.code_length, self.config.get("title_col", 0), self.config.get("code_sep", " ")))
+                start_idx = round(text_num * i / preprocess_threads)
+                end_idx = round(text_num * (i+1) / preprocess_threads)
+                arguments.append((
+                    collection_path, 
+                    code_path, 
+                    text_num, 
+                    start_idx, 
+                    end_idx, 
+                    tokenizer, 
+                    self.config.code_length, 
+                    self.config.text_col,
+                    # FIXME: add stopwords
+                    None, 
+                    self.config.get("code_sep", " "),
+                    self.config.get("dedup_code"),
+                    self.config.get("stem_code"),
+                    self.config.get("filter_num"),
+                    self.config.get("filter_unit")
+                ))
             with mp.Pool(preprocess_threads) as p:
                 p.starmap(_get_title_code, arguments)
 

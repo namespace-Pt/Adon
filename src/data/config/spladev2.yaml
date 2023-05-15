@@ -24,10 +24,11 @@ index:
   save_index: false
 
 train:
+  
   learning_rate: 2e-5
   scheduler: linear
   batch_size: 64
-  neg_num: 7
+  nneg: 7
   lambda_warmup_step: 0
   eval_step: 5e
 

@@ -22,15 +22,16 @@ train:
   # only query-pos pair
   neg_type: none
   epoch: 80
+  bf16: true
 
   learning_rate: 1e-3
   scheduler: linear
   batch_size: 400
   eval_delay: 40e
+  early_stop_patience: 0
 
   main_metric: MRR@10
 
 code:
   code_type: ANCE_hier
   code_length: 10
-  code_size: 100

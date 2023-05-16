@@ -3,7 +3,7 @@ import torch
 from .BaseModel import BaseModel
 
 from .AR2 import AR2
-from .BOW import BOW
+from .AutoTSG import AutoTSG
 from .BM25 import BM25
 from .COIL import COIL
 from .ColBERT import ColBERT
@@ -13,6 +13,7 @@ from .DPR import DPR
 from .IVF import IVF, TopIVF, TokIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
+from .Sequer import Sequer
 from .SEAL import SEAL
 from .RankT5 import RankT5
 from .CrossEnc import CrossEncoder
@@ -23,7 +24,7 @@ from .VQ import DistillVQ
 MODEL_MAP = {
     "ar2": AR2,
     "bm25": BM25,
-    "bow": BOW,
+    "autotsg": AutoTSG,
     "coil": COIL,
     "colbert": ColBERT,
     "crossenc": CrossEncoder,
@@ -35,6 +36,8 @@ MODEL_MAP = {
     "genre": GENRE,
     "ivf": IVF,
     "rankt5": RankT5,
+    "seq2seq": Sequer,
+    "sequer": Sequer,
     "sparta": SPARTA,
     "spladev2": SPLADEv2,
     "seal": SEAL,

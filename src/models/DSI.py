@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM
 from .BaseModel import BaseGenerativeModel
 
@@ -10,9 +11,9 @@ class DSI(BaseGenerativeModel):
         super().__init__(config)
 
         self.plm = AutoModelForSeq2SeqLM.from_pretrained(config.plm_dir)
-        if config.code_size > 0:
+        if config.get("code_size") and self.config.code_size > 0:
             self.plm.resize_token_embeddings(config.vocab_size + config.code_size)
-        
+
         # NOTE: set hidden size to be involked when using deepspeed
         self.config.hidden_size = self.plm.config.hidden_size
 
@@ -148,8 +149,11 @@ class DSIQG(DSI):
             text_codes[:, 1:] = -1
 
             eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id
-            for i in range(text_num):
-                code = tokenizer.encode(str(i), add_special_tokens=False)
+            for i in tqdm(range(text_num)):
+                code = i
+                if self.config.get("code_bias"):
+                    code += self.config.code_bias
+                code = tokenizer.encode(str(code), add_special_tokens=False)
                 code.append(eos_token_id)
                 text_codes[i, 1: len(code) + 1] = code
 

@@ -47,9 +47,10 @@ This repository contains the implementation of AutoTSG.
    tar -xzvf autotsg.ms.tar.gz -C src/data/cache/
    ```
 2. ```bash
-   torchrun --nproc_per_node=4 run.py AutoTSG base=MS300k mode=eval ++nbeam=100 ++eval_batch_size=20
+   torchrun --nproc_per_node=4 run.py AutoTSG base=MS300k mode=eval ++code_length=34 ++nbeam=100 ++eval_batch_size=20
    ```
    - `nproc_per_node` determines how many GPU to use
+   - `code_length` determines the length for the concatenation of terms, which is default to 26
    - `nbeam` determines beam size
 3. With 4 A100s, the above command should finish within seconds and yield results very similar to:
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
@@ -58,5 +59,6 @@ This repository contains the implementation of AutoTSG.
 
 
 ## Quick Maps
-- for training configurations of AutoTSG, check [train.yaml](src/data/config/mode/train.yaml) and [autotsg.yaml](src/data/config/autotsg.yaml)
-- for the implementation of our proposed *constrained greedy search* algorithm, check [index.py](src/utils/index.py) line 1731~2470 (we modify the `.generate()` method in huggingface transformers and implement it with a new class named `BeamDecoder`).
+- For training configurations of AutoTSG, check [train.yaml](src/data/config/mode/train.yaml) and [autotsg.yaml](src/data/config/autotsg.yaml)
+- For the implementation of our proposed *constrained greedy search* algorithm, check [index.py](src/utils/index.py) line 1731~2470 (we modify the `.generate()` method in huggingface transformers and implement it with a new class named `BeamDecoder`).
+- For interacting with the data and selected terms, run [autotsg.ipynb](src/notebooks/autotsg.ipynb)

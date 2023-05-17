@@ -3,9 +3,18 @@
 This repository contains the implementation of AutoTSG.
 
 ## Downloading Data
-0. Clone the repository;
-1. Download the Natual Questions 320k Dataset from [HERE]();
-2. Download the MSMARCO Document 300k Dataset from [HERE]();
+0. Clone the repository and create the environment
+   ```bash
+   export CUDA=11.6
+   conda create -n autotsg python=3.9.12
+   conda activate autotsg
+   conda install pytorch==1.12.1 cudatoolkit=$CUDA -c conda-forge -c pytorch
+   conda install faiss-gpu==1.7.2 -c conda-forge
+   pip install torch_scatter -f https://data.pyg.org/whl/torch-1.12.0+$CUDA.html
+   pip install transformers==4.21.3 hydra-core==1.2.0 notebook ipywidgets psutil
+   ```
+1. Download the Natual Questions 320k Dataset from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9bKdcHs4jH0PKJXw?e=uWBLwb);
+2. Download the MSMARCO Document 300k Dataset from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9YngXx1vJEE2VjZQ?e=fzMbDj);
 3. Untar the file at anywhere you like, e.g. `/data/AutoTSG`;
 4. Go to `src/data/config/base/_default.yaml`, set 
    - `data_root: /data/AutoTSG`. This tells the program where to find the data.
@@ -47,7 +56,7 @@ This repository contains the implementation of AutoTSG.
    |:-:|:-:|:-:|:-:|:-:|
    |0.484|0.491|0.359|0.766|0.907|
 
-<!-- ## Reproducing from Scratch
-### Training Matching-oriented Term Selector
-### Producing Terms
-### Likelihood-adapted Sequence-to-sequence Learning -->
+
+## Quick Maps
+- for training configurations of AutoTSG, check [train.yaml](src/data/config/mode/train.yaml) and [autotsg.yaml](src/data/config/autotsg.yaml)
+- for the implementation of our proposed *constrained greedy search* algorithm, check [index.py](src/utils/index.py) line 1731~2470 (we modify the `.generate()` method in huggingface transformers and implement it with a new class named `BeamDecoder`).

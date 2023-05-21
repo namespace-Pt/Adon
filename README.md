@@ -8,9 +8,9 @@ This repository contains the implementation of AutoTSG.
    export CUDA=11.6
    conda create -n autotsg python=3.9.12
    conda activate autotsg
-   conda install pytorch==1.12.1 cudatoolkit=$CUDA -c conda-forge -c pytorch
+   conda install pytorch==1.10.1 cudatoolkit=$CUDA -c conda-forge -c pytorch
    conda install faiss-gpu==1.7.2 -c conda-forge
-   pip install torch_scatter -f https://data.pyg.org/whl/torch-1.12.0+$CUDA.html
+   pip install torch_scatter -f https://data.pyg.org/whl/torch-1.10.0+$CUDA.html
    pip install transformers==4.21.3 hydra-core==1.2.0 notebook ipywidgets psutil
    ```
 1. Download the Natual Questions 320k Dataset from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9bKdcHs4jH0PKJXw?e=uWBLwb);

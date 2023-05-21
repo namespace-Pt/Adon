@@ -70,15 +70,7 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
    export JAVA_HOME=/the/path/you/like/jdk-11.0.2
    export PATH=$JAVA_HOME/bin:$PATH
    ```
-1. Run BM25 for sanity check.
-   ```bash
-   python run.py BM25 base=NQ320k ++k1=1.5 ++b=0.75
-   ```
-   The results should be
-   |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
-   |:-:|:-:|:-:|:-:|:-:|
-   |0.467|0.475|0.365|0.690|0.876|
-2. Run BM25 on training set to produce hard negatives.
+1. Run BM25 on training set to produce hard negatives.
    ```bash
    python run.py BM25 base=NQ320k ++k1=1.5 ++b=0.75 ++load_index ++eval_set=train ++hits=200
    ```
@@ -87,7 +79,7 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
    python -m scripts.negative base=NQ320k ++neg_type=BM25
    ```
    This command creates a file at `src/data/cache/NQ320k/dataset/train/negatives_BM25.pkl` storing the top 200 negatives for each training query.
-3. Train the matching-oriented term selector (UniCOIL) using BM25 negatives.
+2. Train the matching-oriented term selector (UniCOIL) using BM25 negatives.
    ```bash
    torchrun --nproc_per_node=2 run.py UniCOIL base=NQ320k ++batch_size=5 ++fp32
    ```

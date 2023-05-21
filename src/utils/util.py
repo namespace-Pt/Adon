@@ -63,11 +63,11 @@ def load_from_previous(model:torch.nn.Module, path:str):
 
     new_state_dict = {}
     for k, v in state_dict.items():
-        if "plm" in k:
-            new_state_dict[k.replace("plm", "textEncoder")] = v
-            new_state_dict[k.replace("plm", "queryEncoder")] = v
-        else:
-            new_state_dict[k] = v
+        # if "plm" in k:
+        #     new_state_dict[k.replace("plm", "textEncoder")] = v
+        #     new_state_dict[k.replace("plm", "queryEncoder")] = v
+        # else:
+        new_state_dict[k] = v
 
     missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
     if len(missing_keys):

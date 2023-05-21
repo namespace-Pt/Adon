@@ -5,10 +5,3 @@ defaults:
 index_type: trie
 load_index: true
 save_index: true
-
-# stop if the threshold has been reduced to 
-beam_trsd: 0
-# how many steps to examine threshold
-trsd_start_len: 0
-# sample instead of topk?
-decode_do_sample: false

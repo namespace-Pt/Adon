@@ -5,4 +5,16 @@ defaults:
 nbeam: 10
 # how to measure relevance, generative probability or eos hidden states
 rank_type: prob
+# stop if the threshold has been reduced to 
+beam_trsd: 0
+# how many steps to examine threshold
+trsd_start_len: 0
+# sample instead of topk?
+decode_do_sample: false
+decode_do_greedy: false
+decode_renorm_logit: false
 
+sample_topk: null
+sample_topp: null
+sample_typicalp: null
+sample_tau: null

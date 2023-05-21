@@ -1830,7 +1830,7 @@ class BeamDecoder():
         else:
             # in wordset setting, one text may be added to beams multiple times, only keep the best one
             # use np.array_equal to test equivalence to include element-wise equal and shape-wise equal
-            if self.constrain_index_type == "wordset":
+            if self.constrain_index_type == "wordset" and not self.do_sort_code:
                 for i, x in enumerate(beams):
                     if isinstance(text_idx, np.ndarray) and np.array_equal(text_idx, x[-2]) or isinstance(text_idx, list) and text_idx == x[-2]:
                         # when the stored score is bigger, keep it and return
@@ -1870,7 +1870,7 @@ class BeamDecoder():
             self.beams[i] = [x[0] for x in batch_beams]
         
 
-    def prepare(self, nbeam, input_ids, eos_token_id, pad_token_id, constrain_index, rank_type, do_dedup, do_early_stop, early_stop_start_len, tokenizer):
+    def prepare(self, nbeam, input_ids, eos_token_id, pad_token_id, constrain_index, rank_type, do_early_stop, early_stop_start_len, tokenizer, text_indices):
         # set necessary attributes that will be involked extensively
         self.nbeam = nbeam
         self.input_len = input_ids.shape[1]
@@ -1881,11 +1881,10 @@ class BeamDecoder():
         self.rank_type = rank_type
         # for debug
         self.tokenizer = tokenizer
-        # whether to deduplicate among beams
-        self.do_dedup = do_dedup
         # whether early stop in wordset index
         self.do_early_stop = do_early_stop
         self.early_stop_start_len = early_stop_start_len
+        self.do_sort_code = text_indices is not None
         
         batch_size = input_ids.shape[0]
         # a beam list for each batch, whose element is (decoded_seq, score) pair
@@ -1961,9 +1960,6 @@ class BeamDecoder():
         beam_tokens = beam_tokens.tolist()
         beam_scores = beam_scores.tolist()
         beam_indices = beam_indices.tolist()
-        # times = np.zeros(3)
-        # times2 = np.zeros(4)
-        # t0 = time.time()
 
         for batch_id, (batch_beam_tokens, batch_beam_scores, batch_beam_indices) in enumerate(zip(beam_tokens, beam_scores, beam_indices)):
             beam_idx = 0
@@ -1990,21 +1986,14 @@ class BeamDecoder():
                 # when next token is separator, update prev_text_indices and prev_words
                 # if prev_text_indices is 1, just add to beams
                 if self.constrain_index_type == "wordset":
-                    # t11 = time.time()
                     # by default we just slice out the beam_index result
                     prev_words = prev_words_this_batch[beam_index]
                     prev_text_indices = prev_text_indices_this_batch[beam_index]
                     prefix = prefixes_this_batch[beam_index]
-                    
-                    # t21 = time.time()
                     if prefix is None:
                         prefix = [beam_token]
                     else:
                         prefix = prefix + [beam_token]
-
-                    # t12 = time.time()
-                    # times2[0] += t21 - t11
-                    # times2[1] += t12 - t21
 
                     if constrain_index.sep_token_id is None or beam_token == constrain_index.sep_token_id:
                         word = constrain_index.get_word(prefix)
@@ -2016,9 +2005,6 @@ class BeamDecoder():
                                 prev_text_indices = new_prev_text_indices
                                 if prev_words is not None:
                                     prev_words = np.concatenate([prev_words, np.array([word], dtype=np. int32)], axis=-1)
-                                    # sort words so that we can make element-wise comparison with other words in the batch
-                                    if self.do_dedup:
-                                        prev_words.sort()
                                 else:
                                     # in case this is the first generated word
                                     prev_words = np.array([word], dtype=np.int32)
@@ -2067,50 +2053,16 @@ class BeamDecoder():
                             self.beams[global_batch_idx][pos] = beam
 
                     else:
-                        is_dup = False
-                        if self.do_dedup and prev_words is not None:
-                            max_dup_num = len(prev_text_indices)
-                            dup_num = 0
-                            smallest_idx = -1
-                            smallest_score = beam_score
-                            # compare with other beams in this batch one-by-one and remove duplications
-                            for other_beam_idx, other_words in enumerate(prev_words_this_batch_new[:beam_idx]):
-                                # when the words are the same, only leave the top k scored ones where k is prev_text_indices (the number of documents that contain these words), so as to give more chance to other hypotheses
-                                # since we are generating new beams one by one, there will be at most one redundant beam
-                                if other_words is not None and len(prev_words) == len(other_words) and (prev_words == other_words).all():
-                                    dup_num += 1
-                                    # print(other_words, other_beam_idx, beam_idx)
-                                    other_score = next_beam_scores[batch_id, other_beam_idx]
-                                    if other_score < smallest_score:
-                                        smallest_idx = other_beam_idx
-                                        smallest_score = other_score
+                        prev_words_this_batch_new[beam_idx] = prev_words
+                        prev_text_indices_this_batch_new[beam_idx] = prev_text_indices
+                        prefixes_this_batch_new[beam_idx] = prefix
 
-                            if dup_num > max_dup_num:
-                                # replace the smallest with the current
-                                if smallest_idx != -1:
-                                    # sanity check
-                                    assert prefixes_this_batch_new[smallest_idx] == prefix, f"Conflict prefix: {prefixes_this_batch_new} and {prefix} at {smallest_idx}"
-                                    assert next_beam_tokens[batch_id, smallest_idx] == beam_token, f"Conflict other beam tokens: {next_beam_tokens[batch_id]} and {beam_token} at {smallest_idx}"
-                                    next_beam_scores[batch_id, smallest_idx] = beam_score
-                                    next_beam_indices[batch_id, smallest_idx] = beam_index
-                                # otherwise, discard the current
-                                is_dup = True
+                        # otherwise, when the generated words correspond to many documents or the word is not finished, continue
+                        next_beam_tokens[batch_id, beam_idx] = beam_token
+                        next_beam_scores[batch_id, beam_idx] = beam_score
+                        next_beam_indices[batch_id, beam_idx] = beam_index
+                        beam_idx += 1
 
-                        if not is_dup:
-                            prev_words_this_batch_new[beam_idx] = prev_words
-                            prev_text_indices_this_batch_new[beam_idx] = prev_text_indices
-                            prefixes_this_batch_new[beam_idx] = prefix
-
-                            # otherwise, when the generated words correspond to many documents or the word is not finished, continue
-                            next_beam_tokens[batch_id, beam_idx] = beam_token
-                            next_beam_scores[batch_id, beam_idx] = beam_score
-                            next_beam_indices[batch_id, beam_idx] = beam_index
-                            beam_idx += 1
-
-                    # t14 = time.time()
-                    # times[0] += t12-t11
-                    # times[1] += t13-t12
-                    # times[2] += t14-t13
                 # when next token is eos, add to beam
                 # when cur_new_tokens has reached the limits, add to beam regardless of eos token
                 elif self.constrain_index_type == "trie":
@@ -2161,10 +2113,6 @@ class BeamDecoder():
                 self.prev_words[global_batch_idx] = prev_words_this_batch_new
                 self.prev_text_indices[global_batch_idx] = prev_text_indices_this_batch_new
                 self.prefixes[global_batch_idx] = prefixes_this_batch_new
-
-        # t = time.time()
-        # print(f"update beams: {times, t-t0}")
-        # print(f"t1: {times2}")
 
         # used to slice input_ids and model_kwargs
         batch_beam_indices = (next_beam_indices.view(self.batch_size, -1) + self.beam_idx_bias[:self.batch_size] * self.prev_num_beams).view(-1)
@@ -2309,7 +2257,29 @@ class BeamDecoder():
                         )
 
     @torch.no_grad()
-    def search(self, model:T5ForConditionalGeneration, query:Mapping, nbeam=10, max_new_tokens=34, constrain_index:Union[TrieIndex,WordSetIndex]=None, threshold=0, trsd_start_len=0, rank_type="prob", tokenizer=None, text_indices=None, do_dedup=False, do_sample=False, do_early_stop=False, early_stop_start_len=0):
+    def search(
+        self, 
+        model:T5ForConditionalGeneration, 
+        query:Mapping, 
+        nbeam=10,
+        max_new_tokens=33, 
+        constrain_index:Union[TrieIndex,WordSetIndex]=None, 
+        threshold=0, 
+        trsd_start_len=0, 
+        rank_type="prob", 
+        tokenizer=None, 
+        text_indices=None, 
+        do_sample=False, 
+        do_greedy=False, 
+        do_early_stop=False,
+        top_k=None,
+        top_p=None,
+        typical_p=None,
+        temperature=None,
+        renormalize_logits=None,
+        early_stop_start_len=0, 
+        **kwargs
+    ):
         """
         Perform beam search with constrain from trie_index or wordset_index.
         """
@@ -2347,7 +2317,24 @@ class BeamDecoder():
             # if decoder-only then inputs_tensor has to be `input_ids`
             input_ids = inputs_tensor
 
-        self.prepare(nbeam, input_ids, eos_token_id, pad_token_id, constrain_index, rank_type, do_dedup, do_early_stop, early_stop_start_len, tokenizer)
+        self.prepare(nbeam, input_ids, eos_token_id, pad_token_id, constrain_index, rank_type, do_early_stop, early_stop_start_len, tokenizer, text_indices)
+
+        # TODO: more logit processors
+        # logits_processor = model._get_logits_processor(
+        #     eos_token_id=eos_token_id,
+        #     num_beams=self.num_beams,
+        #     num_beam_groups=self.num_beam_groups,
+        #     diversity_penalty=diversity_penalty,
+        # )
+        if do_sample:
+            logits_warper = model._get_logits_warper(
+                top_k=top_k,
+                top_p=top_p,
+                typical_p=typical_p,
+                temperature=temperature,
+                num_beams=self.num_beams,
+                renormalize_logits=renormalize_logits,
+            )
 
         beam_scores = torch.zeros((self.batch_size, self.num_beams), device=self.device)
         # make sure only the first beam will be selected during the first beam search iteration, thereby avoiding repetitive input_ids across beams
@@ -2360,7 +2347,6 @@ class BeamDecoder():
         )
 
         while self.num_left_batch and self.cur_new_tokens < max_new_tokens:
-            # t1 = time.time()
             # num_beams is consistent in the loop
             self._set_num_beams()
 
@@ -2371,12 +2357,11 @@ class BeamDecoder():
             logits = outputs.logits[:, -1, :]    # (batch_size * num_beams, vocab_size)
             scores = torch.log_softmax(logits, dim=-1)  # (batch_size * num_beams, vocab_size)
 
-            # t2 = time.time()
-            # 3. do masking based on trie or intersection
-            # IMPORTANT! in this section we use prev_num_beams because input_ids are based on prev_num_beams
+            # 3. do masking based on constrain index
+            # NOTE: in this section we use prev_num_beams because input_ids are based on prev_num_beams
+            # NOTE: no need to do this inside each beam group
             mask = torch.full_like(scores, -float("inf"))
             if self.constrain_index_type == "trie":
-                # mask eos_token when cur_len < min_len; mask non-valid tokens with trie
                 for batch_id, beam_sent in enumerate(input_ids.view(self.batch_size, self.prev_num_beams, -1)):
                     for beam_id, sent in enumerate(beam_sent):
                         mask[batch_id * self.prev_num_beams + beam_id, constrain_index.get_valid_tokens(sent.tolist())] = 0
@@ -2386,7 +2371,6 @@ class BeamDecoder():
                 beam_scores_list = beam_scores.tolist()
                 for batch_id in range(self.batch_size):
                     global_batch_idx = self.global_batch_idx(batch_id)
-
                     prev_text_indices = self.prev_text_indices[global_batch_idx] # prev_num_beams, *
                     prev_words = self.prev_words[global_batch_idx] # prev_num_beams
                     prefixes = self.prefixes[global_batch_idx]
@@ -2394,7 +2378,7 @@ class BeamDecoder():
                         beam_score = beam_scores_list[batch_id * self.prev_num_beams + beam_id]
                         # wordsetindex cannot return an empty list for an invalid token sequence
                         # we manually skip to check valid tokens when beam score is -inf
-                        if beam_score < -1e6:
+                        if beam_score < -1e9:
                             # do not get_valid_tokens for nonsence beam
                             valid_tokens = []                        
                         else:
@@ -2405,50 +2389,61 @@ class BeamDecoder():
                                 valid_tokens = constrain_index.get_valid_tokens(prev_text_indices[beam_id], prev_words[beam_id], prefixes[beam_id])
                             mask[batch_id * self.prev_num_beams + beam_id, valid_tokens] = 0
                 scores = scores + mask
-            
-            # t3 = time.time()
+
             # 4. find next token
-            next_beam_scores = scores + beam_scores[:, None]
-            # next_beam_scores = scores
-            # reshape for beam search
-            vocab_size = next_beam_scores.shape[-1]
-            next_beam_scores = next_beam_scores.view(self.batch_size, -1) # (batch_size, num_beams * vocab_size)
+            if do_greedy:
+                next_beam_scores = scores
+                if do_sample:
+                    next_beam_scores = logits_warper(input_ids, next_beam_scores)
+                    # sample without resplacement according to the logits
+                    probs = torch.softmax(next_beam_scores, dim=-1) # (batch_size * num_beams, vocab_size)
+                    next_beam_tokens = torch.multinomial(probs, num_samples=1)  # (batch_size * num_beams)
+                    next_beam_scores = next_beam_scores.gather(index=next_beam_tokens, dim=-1)
 
-            if do_sample:
-                # sample without resplacement according to the logits
-                probs = torch.softmax(next_beam_scores, dim=-1)
-                next_beam_tokens = torch.multinomial(probs, num_samples=self.num_beams * 2)
-                next_beam_scores = torch.gather(next_beam_scores, -1, next_beam_tokens)
-                # sort the scores and tokens
-                next_beam_scores, _indices = torch.sort(next_beam_scores, descending=True, dim=1)
-                next_beam_tokens = torch.gather(next_beam_tokens, -1, _indices)
-
+                    next_beam_tokens = next_beam_tokens.view(self.batch_size, self.num_beams)
+                    next_beam_scores = next_beam_scores.view(self.batch_size, self.num_beams)
+                else:
+                    next_beam_scores, next_beam_tokens = torch.max(next_beam_scores, dim=-1).view(self.batch_size, self.num_beams)    # (batch_size, num_beams)
+                
+                next_beam_indices = torch.arange(self.num_beams, device=self.device).expand_as(next_beam_tokens)
+            
             else:
-                # scale top k to 5 times larger
-                # trie index only needs 2*k (may decode to <eos>)
-                # give chance to more hypotheses in wordset index 
-                next_beam_scores, next_beam_tokens = torch.topk(
-                    next_beam_scores, k=self.num_beams * 5 if self.do_dedup else self.num_beams * 2, dim=1, largest=True, sorted=True
-                )
-            next_beam_indices = torch.div(next_beam_tokens, vocab_size, rounding_mode="floor")
-            next_beam_tokens = next_beam_tokens % vocab_size
+                next_beam_scores = scores + beam_scores[:, None]
 
-            # t4 = time.time()
+                if do_sample:
+                    next_beam_scores = logits_warper(input_ids, next_beam_scores)
+                    # reshape for beam search
+                    vocab_size = next_beam_scores.shape[-1]
+                    next_beam_scores = next_beam_scores.view(self.batch_size, -1) # (batch_size, num_beams * vocab_size)
+                    # sample without resplacement according to the logits
+                    probs = torch.softmax(next_beam_scores, dim=-1)
+                    next_beam_tokens = torch.multinomial(probs, num_samples=self.num_beams * 2)
+                    next_beam_scores = torch.gather(next_beam_scores, -1, next_beam_tokens)
+                    # sort the scores and tokens
+                    next_beam_scores, _indices = torch.sort(next_beam_scores, descending=True, dim=1)
+                    next_beam_tokens = torch.gather(next_beam_tokens, -1, _indices)
+
+                else:
+                    # reshape for beam search
+                    vocab_size = next_beam_scores.shape[-1]
+                    next_beam_scores = next_beam_scores.view(self.batch_size, -1) # (batch_size, num_beams * vocab_size)
+
+                    # scale top k to 5 times larger
+                    # trie index only needs 2*k (may decode to <eos>)
+                    # give chance to more hypotheses in wordset index 
+                    next_beam_scores, next_beam_tokens = torch.topk(
+                        next_beam_scores, k=self.num_beams * 2, dim=1, largest=True, sorted=True
+                    )
+                next_beam_indices = torch.div(next_beam_tokens, vocab_size, rounding_mode="floor")
+                next_beam_tokens = next_beam_tokens % vocab_size
+
             # 5. update beam hypotheses if eos is decoded
             beam_scores, input_ids, model_kwargs = self.update_beams(next_beam_tokens, next_beam_scores, next_beam_indices, input_ids, model, model_kwargs, outputs.past_key_values, max_new_tokens, constrain_index)
 
-            # t5 = time.time()
-            # print(input_ids)
             # print(beam_scores)
             # print(tokenizer.batch_decode(input_ids))
             # print(self.beams)
             # input()
-            # try:
-            #     print(self.prev_words)
-            #     # print(self.prefixes)
-            # except:
-            #     pass
-            # # print(self.beams)
 
             # 6. handle the finished batches according to the threshold
             self.handle_threshold(input_ids, beam_scores, model, model_kwargs, threshold, trsd_start_len, constrain_index)
@@ -2456,200 +2451,7 @@ class BeamDecoder():
             # 7. update model kwargs in case some batches finish
             input_ids, beam_scores, model_kwargs = self.update_parameters_by_batch(input_ids, beam_scores, model_kwargs)
 
-            # t6 = time.time()
-
-            # print(t2-t1, t3-t2, t4-t3, t5-t4, t6-t5, t6-t1)
-            # input()
-
         self._finalize()
-
-
-class GreedyCodeSorter():
-    @property
-    def batch_size(self):
-        return len(self.batch_filter)
-
-    @property
-    def cur_new_tokens(self):
-        return self.cur_len - self.input_len
-    
-    @property
-    def num_left_batch(self):
-        return self.batch_filter.sum()
-
-    def global_batch_idx(self, local_idx):
-        return self.batch_indices[local_idx]
-        
-    def prepare(self, input_ids, eos_token_id, pad_token_id, num_return_sequences):
-        # set necessary attributes that will be involked extensively
-        self.input_len = input_ids.shape[1]
-        self.cur_len = input_ids.shape[1]
-        self.device = input_ids.device
-        self.eos_token_id = eos_token_id
-        self.pad_token_id = pad_token_id
-        
-        batch_size = input_ids.shape[0]
-        # to determine which batch finished
-        self.batch_filter = torch.ones(batch_size, dtype=torch.bool, device=self.device)
-        self.batch_indices = torch.arange(batch_size, device=self.device)
-
-        # a beam list for each batch, whose element is (decoded_seq, score) pair
-        # NOTE: here we call it beam just to be consistent with BeamDecoder
-        self.beams = [[] for _ in range(batch_size)]
-        self.prev_words = [[None for _ in range(num_return_sequences)] for _ in range(batch_size)]
-        self.prefixes = [[None for _ in range(num_return_sequences)] for _ in range(batch_size)]
-
-    def update_parameters_by_batch(self, input_ids, model_kwargs):
-        # discard model_kwargs corresponding to the finished batches
-        if self.num_left_batch < self.batch_size:
-            # update model_kwargs
-            input_ids = input_ids.unflatten(0, (self.batch_size, -1))[self.batch_filter].flatten(0,1)
-            for k, v in model_kwargs.items():
-                if k == "past":
-                    filtered_past = ()
-                    for layer_past_key_values in v:
-                        filtered_layer_past_key_values = ()
-                        for layer_past_key_value in layer_past_key_values:
-                            filtered_layer_past_key_values += (layer_past_key_value.unflatten(0, (self.batch_size, -1))[self.batch_filter].flatten(0, 1),)
-                        filtered_past += (filtered_layer_past_key_values,)
-                    model_kwargs[k] = filtered_past
-                elif k == "encoder_outputs":
-                    model_kwargs[k]["last_hidden_state"] = v["last_hidden_state"].unflatten(0, (self.batch_size, -1))[self.batch_filter].flatten(0, 1)
-                elif isinstance(v, torch.Tensor):
-                    model_kwargs[k] = v.unflatten(0, (self.batch_size, -1))[self.batch_filter].flatten(0, 1)
-
-            # update batch filter
-            self.batch_indices = self.batch_indices[self.batch_filter]
-            self.batch_filter = self.batch_filter[self.batch_filter]
-        return input_ids, model_kwargs
-
-    @torch.no_grad()
-    def search(self, model:T5ForConditionalGeneration, query:Mapping, constrain_index:Union[TrieIndex,WordSetIndex], text_indices:np.ndarray, do_sample=False, temperature=1, num_return_sequences=1, **kwargs):
-        """
-        Perform beam search with constrain from trie_index or constrain_index.
-        """
-        if num_return_sequences > 1:
-            assert do_sample, f"Decoding to multiple sequences can only be available with do_sample=True!"
-        
-        bos_token_id = model.config.bos_token_id
-        eos_token_id = model.config.eos_token_id
-        pad_token_id = model.config.pad_token_id
-
-        # prepare model inputs to the encoder
-        # input_tensor: the input sequence of shape (B, L)
-        # model_kwargs: attention_mask, token_type_id, 
-        inputs_tensor, model_input_name, model_kwargs = model._prepare_model_inputs(None, bos_token_id, model_kwargs=query)
-
-        model_kwargs["output_attentions"] = None
-        # output hidden states
-        model_kwargs["output_hidden_states"] = True
-        model_kwargs["use_cache"] = True
-
-        batch_size = inputs_tensor.shape[0]
-
-        # prepare encoder_outputs
-        if model.config.is_encoder_decoder and "encoder_outputs" not in model_kwargs:
-            model_kwargs = model._prepare_encoder_decoder_kwargs_for_generation(
-                inputs_tensor, model_kwargs, model_input_name
-            )
-        # prepare input_ids for the decoder
-        if model.config.is_encoder_decoder:
-            input_ids = model._prepare_decoder_input_ids_for_generation(
-                batch_size,
-                decoder_start_token_id=None,
-                bos_token_id=bos_token_id,
-                model_kwargs=model_kwargs,
-                device=inputs_tensor.device,
-            )   # (B, 1)
-        else:
-            # if decoder-only then inputs_tensor has to be `input_ids`
-            input_ids = inputs_tensor
-
-        self.prepare(input_ids, eos_token_id, pad_token_id, num_return_sequences)
-
-        # expand model_kwargs and input_ids to the max size, which is batch_size * num_beams
-        input_ids, model_kwargs = model._expand_inputs_for_generation(
-            input_ids, expand_size=num_return_sequences, is_encoder_decoder=model.config.is_encoder_decoder, **model_kwargs
-        )
-
-        docs = constrain_index.docs[text_indices] # B, L
-
-        while self.num_left_batch:
-            # 1. adjust input_ids by past_key_values
-            model_inputs = model.prepare_inputs_for_generation(input_ids, **model_kwargs)
-            
-            # 2. compute logits
-            outputs = model(**model_inputs, return_dict=True)   
-            logits = outputs.logits[:, -1, :]    # batch_size * num_seq, vocab_size
-            scores = torch.log_softmax(logits, dim=-1)  # batch_size * num_seq, vocab_size
-
-            mask = torch.full_like(scores, -float("inf"))
-            for batch_id in range(self.batch_size):
-                global_batch_idx = self.global_batch_idx(batch_id)
-                prev_words = self.prev_words[global_batch_idx]
-                prefixes = self.prefixes[global_batch_idx]
-                text_idx = text_indices[global_batch_idx]
-
-                for seq_id in range(num_return_sequences):
-                    valid_tokens = constrain_index.get_valid_tokens_from_doc(text_idx, prev_words[seq_id], prefixes[seq_id])
-                    mask[batch_id * num_return_sequences + seq_id, valid_tokens] = 0
-            scores = scores + mask
-            
-            if do_sample:
-                scores = scores / temperature
-                probs = torch.softmax(scores, dim=-1)
-                next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
-            else:
-                next_tokens = torch.argmax(scores, dim=-1)  # batch_size * num_seq
-
-            input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
-            model_kwargs["past"] = outputs.past_key_values
-            self.cur_len += 1
-
-            # update prev_words
-            next_tokens = next_tokens.view(self.batch_size, num_return_sequences).tolist()
-            for batch_id, batch_next_token in enumerate(next_tokens):
-                global_batch_idx = self.global_batch_idx(batch_id)
-                doc = docs[global_batch_idx]
-                doc = doc[doc != -1]
-
-                for seq_id, next_token in enumerate(batch_next_token):
-                    batch_seq_idx = batch_id * num_return_sequences + seq_id
-
-                    prefix = self.prefixes[global_batch_idx][seq_id]
-                    prev_words = self.prev_words[global_batch_idx][seq_id]
-
-                    if prefix is None:
-                        # expand 1 dimension
-                        prefix = [next_token]
-                    else:
-                        prefix = prefix + [next_token]
-
-                    if next_token == constrain_index.sep_token_id:
-                        word = constrain_index.get_word(prefix)
-                        if prev_words is not None:
-                            prev_words = np.concatenate([prev_words, np.array([word], dtype=np.int32)], axis=-1)
-                        else:
-                            # in case this is the first generated word
-                            prev_words = np.array([word], dtype=np.int32)
-                        prefix = None
-                
-                    elif next_token == constrain_index.eos_token_id:
-                        assert len(prev_words) == len(doc)
-                        # wrap with a list to unify reading in :func:`models.BOW.BOW.generate_code`
-                        self.beams[global_batch_idx].append(input_ids[batch_seq_idx].tolist())
-                        self.batch_filter[batch_id] = False
-
-                    self.prev_words[global_batch_idx][seq_id] = prev_words
-                    self.prefixes[global_batch_idx][seq_id] = prefix
-
-            # 7. update model kwargs in case some batches finish
-            input_ids, model_kwargs = self.update_parameters_by_batch(input_ids, model_kwargs)
-
-            # print(self.prev_words)
-            # print(self.prefixes)
-            # print(input_ids)
-            # input()
 
 
 

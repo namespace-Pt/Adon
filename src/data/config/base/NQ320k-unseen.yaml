@@ -1,7 +1,7 @@
 defaults:
   - _default
 
-dataset: NQ
+dataset: NQ320k-unseen
 text_length: 512
 query_length: 32
 

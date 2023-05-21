@@ -1,6 +1,6 @@
 # the root directory of the raw data
-data_root: /works/Adhoc-Retrieval
-plm_root: /works/huggingface-PLMs
+data_root: /share/project/peitian/Data/Adon
+plm_root: /share/project/peitian/Data/huggingface-PLMs
 seed: 42
 
 # the device to run the model or script
@@ -14,6 +14,8 @@ num_worker: 2
 eval_batch_size: 100
 # the dataset to evaluate the model or run commands
 eval_set: dev
+# the mode to evaluate the model: retrieve or rerank
+eval_mode: retrieve
 # use the debug mode (will train 2 steps and encode 10 steps)
 debug: false
 

@@ -3,7 +3,7 @@ defaults:
   - _default
   - base: NQ320k
   - model: generative
-  - index: trie
+  - index: wordset
   - mode: train
   - extra: code
   # add _self_ here so that the following arguments can be rewritten
@@ -14,25 +14,25 @@ base:
   parallel: query
 
 model:
-  model_type: dsiqg
+  model_type: autotsg
   nbeam: 10
 
 train:
-  bf16: true
   # only query-pos pair
   neg_type: none
-  epoch: 80
+  epoch: 50
+  batch_size: 400
+  bf16: true
 
   learning_rate: 1e-3
   scheduler: linear
-  batch_size: 400
   eval_delay: 20e
-  early_stop_patience: 10
-
+  early_stop_patience: 5
   main_metric: MRR@10
 
-  train_set: [train, doct5]
-
 code:
-  code_type: id
-  code_length: 8
+  code_type: words_comma_plus_stem
+  code_length: 26
+  code_sep: ","
+  reduce_code: min
+  permute_code: 0

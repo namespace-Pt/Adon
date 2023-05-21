@@ -15,7 +15,8 @@ class AutoTSG(DSI):
             text_code = x["query_code"]
         else:
             text_code = x["text_code"]
-    
+        invalid_code_pos = (text_code == -1).all(-1)
+        
         # in case there are multiple codes for one text (config.permute_code > 0)
         encoder_outputs = self.plm.encoder(**x["query"])
         query_attn_mask = x["query"]["attention_mask"]
@@ -37,8 +38,10 @@ class AutoTSG(DSI):
         loss = nn.functional.cross_entropy(logits.flatten(0,1), labels.view(-1), reduction="none").view(B, M, -1).mean(-1) # B, M
         # sum
         if self.config.reduce_code == "mean":
+            loss[invalid_code_pos] = 0 
             loss = loss.mean()
         elif self.config.reduce_code == "min":
+            loss[invalid_code_pos] = 1e6
             min_loss, min_index = loss.min(-1)
             loss = min_loss.mean()
         else:
@@ -98,6 +101,8 @@ class AutoTSG(DSI):
 
             start_idx = 0
             for i, x in enumerate(tqdm(loader_train, leave=False, ncols=100)):
+                # if i < 328:
+                #     continue
                 qrel_idx = x["qrel_idx"]
                 query = self._move_to_device(x["query"])
 
@@ -113,11 +118,15 @@ class AutoTSG(DSI):
                     constrain_index=index,
                     text_indices=x["text_idx"].squeeze(1).numpy(),
                     tokenizer=tokenizer,
+                    do_sample=self.config.decode_do_sample,
+                    do_greedy=self.config.decode_do_greedy,
+                    topk=self.config.sample_topk,
+                    topp=float(self.config.sample_topp) if self.config.sample_topp is not None else None,
+                    typical_p=float(self.config.sample_typicalp) if self.config.sample_typicalp is not None else None,
+                    temperature=float(self.config.sample_tau) if self.config.sample_tau is not None else None,
+                    renormalize_logits=self.config.decode_renorm_logit,
                     # forbid early stop as we must generate the entire sequence
                     do_early_stop=False,
-                    do_sample=self.config.get("decode_do_sample", False),
-                    do_greedy=self.config.get("decode_do_greedy", False),
-                    # temperature=self.config.get("decode_tau", 1),
                 )
                 res = sorter.beams  # batch_size, nseq, code_length
 
@@ -125,9 +134,9 @@ class AutoTSG(DSI):
                 for j, y in enumerate(res):
                     length = len(y[0])
                     try:
-                        query_codes[qrel_idx[j], :, :length] = y
+                        query_codes[qrel_idx[j], :len(y), :length] = y
                     except:
-                        print(i, self.config.rank)
+                        print(i, j, self.config.rank)
                         raise
 
                 start_idx = end_idx

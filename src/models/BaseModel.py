@@ -574,11 +574,9 @@ class BaseModel(nn.Module):
             try:
                 if self.config.dataset == "NQ-open":
                     markdown_format_metric = "|".join([str(metrics["Recall@5"]), str(metrics["Recall@10"]), str(metrics["Recall@20"]), str(metrics["Recall@100"])]) + "|"
-                elif self.config.dataset in ["NQ", "NQ-50k-seen", "NQ-50k-unseen"]:
+                elif "NQ320k" in self.config.dataset or "MS300k" in self.config.dataset or "MS600k" in self.config.dataset:
                     markdown_format_metric = "|".join([str(metrics["MRR@5"]), str(metrics["MRR@10"]), str(metrics["Recall@5"]), str(metrics["Recall@10"])]) + "|"
                     markdown_format_metric += "\t" + "|".join([str(metrics["MRR@10"]), str(metrics["MRR@100"]), str(metrics["Recall@1"]), str(metrics["Recall@10"]), str(metrics["Recall@100"])]) + "|"
-                elif "Top300k" in self.config.dataset:
-                    markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@1"]), str(metrics["Recall@5"]), str(metrics["Recall@10"])]) + "|"
                 else:
                     markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
             except:
@@ -1841,31 +1839,28 @@ class BaseGenerativeModel(BaseModel):
             B = query["input_ids"].shape[0]
             end_idx = start_idx + B
 
-            # print(tokenizer.batch_decode(query["input_ids"], skip_special_tokens=True))
-
             beam_decoder.search(
                 model=self.plm, 
                 query={**query, "encoder_outputs": encoder_outputs},
                 nbeam=self.config.nbeam, 
-                threshold=self.config.get("beam_trsd", 0), 
-                trsd_start_len=self.config.get("trsd_start_len", 0), 
+                threshold=self.config.beam_trsd, 
+                trsd_start_len=self.config.trsd_start_len, 
                 max_new_tokens=self.config.code_length - 1, 
                 constrain_index=index,
-                rank_type=self.config.get("rank_type", "prob"),
+                rank_type=self.config.rank_type,
                 tokenizer=tokenizer,
-                do_dedup=self.config.get("wordset_dedup"),
-                do_sample=self.config.get("decode_do_sample"),
+                do_sample=self.config.decode_do_sample,
+                do_greedy=self.config.decode_do_greedy,
+                topk=self.config.sample_topk,
+                topp=float(self.config.sample_topp) if self.config.sample_topp is not None else None,
+                typical_p=float(self.config.sample_typicalp) if self.config.sample_typicalp is not None else None,
+                temperature=float(self.config.sample_tau) if self.config.sample_tau is not None else None,
+                renormalize_logits=self.config.decode_renorm_logit,
                 do_early_stop=self.config.get("wordset_early_stop"),
-                early_stop_start_len=self.config.get("early_stop_start_len")
+                early_stop_start_len=self.config.get("early_stop_start_len"),
             )
             beams = beam_decoder.beams
             eos_hidden_states = beam_decoder.eos_hidden_states
-
-            # print(beams)
-            # print(beam_decoder.prev_text_indices)
-            # y = input()
-            # if y == "s":
-            #     return
 
             # ranking by score
             if self.config.rank_type == "eos":

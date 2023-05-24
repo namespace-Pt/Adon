@@ -13,8 +13,8 @@ This repository contains the implementation of AutoTSG.
    pip install torch_scatter -f https://data.pyg.org/whl/torch-1.10.0+$CUDA.html
    pip install transformers==4.21.3 hydra-core==1.2.0 notebook ipywidgets psutil
    ```
-1. Download the Natual Questions 320k Dataset from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9bKdcHs4jH0PKJXw?e=uWBLwb);
-2. Download the MSMARCO Document 300k Dataset from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9YngXx1vJEE2VjZQ?e=fzMbDj);
+1. Download the Natual Questions 320k Dataset from [HERE](https://1drv.ms/u/s!AmgRICrhHL4_bh3wgA_e7ejudKQ?e=NvthFS);
+2. Download the MSMARCO Document 300k Dataset from [HERE](https://1drv.ms/u/s!AmgRICrhHL4_bIeJu1oMopijuew?e=bXPPdu);
 3. Untar the file at anywhere you like, e.g. `/data/AutoTSG`;
 4. Go to `src/data/config/base/_default.yaml`, set 
    - `data_root: /data/AutoTSG`. This tells the program where to find the data.
@@ -27,7 +27,7 @@ This repository contains the implementation of AutoTSG.
 
 ## Reproducing from Our Checkpoint
 ### NQ320k
-1. Download the model checkpoint and identifier from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9ZcAXlfqdkyj9fnQ?e=QFDYpA); Then untar it with 
+1. Download the model checkpoint and identifier from [HERE](https://1drv.ms/u/s!AmgRICrhHL4_b9DKN9jQw9kf6ds?e=3iBH0I); Then untar it with 
    ```bash
    tar -xzvf autotsg.nq.tar.gz -C src/data/cache/
    ```
@@ -42,7 +42,7 @@ This repository contains the implementation of AutoTSG.
    |0.757|0.760|0.690|0.875|0.932|
 
 ### MS300k
-1. Download the model checkpoint and identifier from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9cCPF9a-yfDLhzEA?e=Kgj8lY); Then untar it with 
+1. Download the model checkpoint and identifier from [HERE](https://1drv.ms/u/s!AmgRICrhHL4_bfXHeSUeUpsi0qI?e=CrCICo); Then untar it with 
    ```bash
    tar -xzvf autotsg.ms.tar.gz -C src/data/cache/
    ```
@@ -73,15 +73,18 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
 1. Run BM25 on training set to produce hard negatives.
    ```bash
    python run.py BM25 base=NQ320k ++k1=1.5 ++b=0.75 ++eval_set=train ++hits=200
+   # python run.py BM25 base=MS320k ++k1=1.5 ++b=0.75 ++eval_set=train ++hits=200
    ```
    Note that we set `hits=200` for efficiency. Then collect negatives
    ```bash
    python -m scripts.negative base=NQ320k ++neg_type=BM25
+   # python -m scripts.negative base=MS300k ++neg_type=BM25
    ```
    This command creates a file at `src/data/cache/NQ320k/dataset/train/negatives_BM25.pkl` storing the top 200 negatives for each training query.
 2. Train the matching-oriented term selector (UniCOIL) using BM25 negatives.
    ```bash
    torchrun --nproc_per_node=2 run.py UniCOIL base=NQ320k ++batch_size=5 ++fp32
+   # torchrun --nproc_per_node=2 run.py UniCOIL base=MS300k ++batch_size=5 ++fp32
    ```
    The model will be automatically evaluated at the end of each epoch. The model may converge after 1 or 2 epochs. On NQ320k, the results should be similar to
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
@@ -92,6 +95,7 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
 1. Generate the terms and their weights, then run sanity check.
    ```bash
    torchrun --nproc_per_node=2 run.py DeepImpact base=NQ320k mode=eval ++load_ckpt=UniCOIL/best
+   # torchrun --nproc_per_node=2 run.py DeepImpact base=MS300k mode=eval ++load_ckpt=UniCOIL/best
    ```
    On NQ320k, the results should be similar to
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|

@@ -72,7 +72,7 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
    ```
 1. Run BM25 on training set to produce hard negatives.
    ```bash
-   python run.py BM25 base=NQ320k ++k1=1.5 ++b=0.75 ++load_index ++eval_set=train ++hits=200
+   python run.py BM25 base=NQ320k ++k1=1.5 ++b=0.75 ++eval_set=train ++hits=200
    ```
    Note that we set `hits=200` for efficiency. Then collect negatives
    ```bash

@@ -21,8 +21,8 @@ This repository contains the implementation of AutoTSG.
    - `plm_root: /data/AutoTSG/huggingface_PLMs`. By default, the language model from hugginface will be permanently downloaded to this folder and hence can be directly loaded afterwards.
 5. ```bash
    // pre-tokenize the dataset
-   python -m scripts.preprocess base=NQ320k
-   python -m scripts.preprocess base=MS300k
+   python -m scripts.preprocess base=NQ320k ++query_set=[train,dev,doct5-miss,doc]
+   python -m scripts.preprocess base=MS300k ++query_set=[train,dev,doct5-3,doc]
    ```
 
 ## Reproducing from Our Checkpoint
@@ -58,7 +58,7 @@ This repository contains the implementation of AutoTSG.
    |0.484|0.491|0.359|0.766|0.907|
 
 ## Reproducing from Scratch
-There are three procedures to train AutoTSG from scratch. One can conveniently set `base=NQ320k` or `base=MS300k` for different datasets. The default dataset is `NQ320k`.
+There are three procedures to train AutoTSG from scratch. One can conveniently set `base=NQ320k` or `base=MS300k` for different datasets in command line. The default dataset is `NQ320k`.
 
 ### Train the Matching-oriented Term Selector
 0. Install Java11 that is required by [Anserini](src/anserini/).
@@ -83,7 +83,7 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
    ```bash
    torchrun --nproc_per_node=2 run.py UniCOIL base=NQ320k ++batch_size=5 ++fp32
    ```
-   The model will be automatically evaluated at the end of each epoch. The model may converge after 1 or 2 epochs. The results should be similar to
+   The model will be automatically evaluated at the end of each epoch. The model may converge after 1 or 2 epochs. On NQ320k, the results should be similar to
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
    |:-:|:-:|:-:|:-:|:-:|
    |0.717|0.721|0.625|0.880|0.955|
@@ -93,13 +93,16 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
    ```bash
    torchrun --nproc_per_node=2 run.py DeepImpact base=NQ320k mode=eval ++load_ckpt=UniCOIL/best
    ```
-   The results should be similar to
+   On NQ320k, the results should be similar to
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
    |:-:|:-:|:-:|:-:|:-:|
    |0.527|0.533|0.421|0.744|0.882|
 2. Generate document identifiers.
    ```bash
    python run.py DeepImpact base=NQ320k mode=code ++code_type=words_comma_plus_stem ++code_tokenizer=t5 ++code_length=26 ++stem_code ++code_sep='\,'
+
+   # for MS300k, set longer code length
+   python run.py DeepImpact base=MS300k mode=code ++code_type=words_comma_plus_stem ++code_tokenizer=t5 ++code_length=34 ++stem_code ++code_sep='\,'
    ```
    This command will create a memmap file at `src/data/cache/NQ320k/codes/words_comma_plus_stem/t5/26/codes.mmp`. Each line in this file is the terms selected from the corresponding document, descendingly sorted by their weights, and separated with comma. You can interact with them in [autotsg.ipynb](src/notebooks/autotsg.ipynb).
 
@@ -107,28 +110,39 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
 1. Train the Seq2Seq model with the default (descending weight) term order on dataset training queries and psuedo-queries:
    ```bash
    torchrun --nproc_per_node=2 run.py AutoTSG ++train_set=[train,doct5-miss,doc] ++save_ckpt=iter0
-
    # evaluate with beam_size=100
    torchrun --nproc_per_node=2 run.py AutoTSG mode=eval ++load_ckpt=iter0 ++nbeam=100 ++eval_batch_size=20
+
+   # for MS300k, specify code length and replace doct5-miss with doct5-3
+   # torchrun --nproc_per_node=2 run.py AutoTSG base=MS300k ++train_set=[train,doct5-3,doc] ++save_ckpt=iter0 ++code_length=34
+   # torchrun --nproc_per_node=2 run.py AutoTSG base=MS300k mode=eval ++load_ckpt=iter0 ++nbeam=100 ++eval_batch_size=15 ++code_length=34
    ```
-   The results should be similar to
+   On NQ320k, the results should be similar to
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
    |:-:|:-:|:-:|:-:|:-:|
    |0.743|0.745|0.671|0.865|0.927|
 2. Sample plausible document identifiers from the trained model.
    ```bash
-   torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=train ++code_src=greedy-sample-3-tau5 ++eval_batch_size=500 ++decode_do_sample ++sample_tau=5 ++decode_do_greedy
-   torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=doct5-miss ++code_src=greedy-sample-3-tau5 ++eval_batch_size=500 ++decode_do_sample ++sample_tau=5 ++decode_do_greedy
-   torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=doc ++code_src=greedy-sample-3-tau5 ++eval_batch_size=500 ++decode_do_sample ++sample_tau=5 ++decode_do_greedy
+   torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=train ++code_src=iter0 ++eval_batch_size=500 ++decode_do_sample ++sample_tau=5 ++decode_do_greedy
+   torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=doct5-miss ++code_src=iter0 ++eval_batch_size=500 ++decode_do_sample ++sample_tau=5 ++decode_do_greedy
+   torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=doc ++code_src=iter0 ++eval_batch_size=500 ++decode_do_sample ++sample_tau=5 ++decode_do_greedy
+
+   # for MS300k, specify code length, replace doct5-miss with doct5-3, and disable sampling with temperature.
+   # torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=train ++code_src=iter0 ++eval_batch_size=400 ++decode_do_greedy ++code_length=34
+   # torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=doct5-3 ++code_src=iter0 ++eval_batch_size=400 ++decode_do_greedy ++code_length=34
+   # torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=doc ++code_src=iter0 ++eval_batch_size=400 ++decode_do_greedy ++code_length=34
    ```
 3. Iteratively train the Seq2Seq model.
    ```bash
-   torchrun --nproc_per_node=2 run.py AutoTSG ++train_set=[train,doct5-miss,doc] ++return_query_code ++code_src=greedy-sample-tau5 ++load_ckpt=iter0 ++save_ckpt=iter1 ++learning_rate=1e-5 ++scheduler=constant ++eval_delay=0
-
+   torchrun --nproc_per_node=2 run.py AutoTSG ++train_set=[train,doct5-miss,doc] ++return_query_code ++code_src=iter0 ++load_ckpt=iter0 ++save_ckpt=iter1 ++learning_rate=1e-5 ++scheduler=constant ++eval_delay=0 ++batach_size=100
    # evaluate with beam_size=100
    torchrun --nproc_per_node=2 run.py AutoTSG mode=eval ++load_ckpt=iter1 ++nbeam=100 ++eval_batch_size=20
+
+   # for MS300k, specify code length and replace doct5-miss with doct5-3
+   # torchrun --nproc_per_node=2 run.py AutoTSG base=MS300k ++train_set=[train,doct5-3,doc] ++return_query_code ++code_src=iter0 ++load_ckpt=iter0 ++save_ckpt=iter1 ++learning_rate=1e-5 ++scheduler=constant ++eval_delay=0 ++batach_size=100 ++code_length=34
+   # torchrun --nproc_per_node=2 run.py AutoTSG base=MS300k mode=eval ++load_ckpt=iter1 ++nbeam=100 ++eval_batch_size=15 ++code_length=34
    ```
-   The results should be similar to
+   On NQ320k, the results should be similar to
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
    |:-:|:-:|:-:|:-:|:-:|
    |0.757|0.760|0.690|0.875|0.932|

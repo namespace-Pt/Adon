@@ -27,7 +27,7 @@ This repository contains the implementation of AutoTSG.
 
 ## Reproducing from Our Checkpoint
 ### NQ320k
-1. Download the model checkpoint and identifier from [HERE](); Then untar it with 
+1. Download the model checkpoint and identifier from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9ZcAXlfqdkyj9fnQ?e=QFDYpA); Then untar it with 
    ```bash
    tar -xzvf autotsg.nq.tar.gz -C src/data/cache/
    ```
@@ -42,7 +42,7 @@ This repository contains the implementation of AutoTSG.
    |0.757|0.760|0.690|0.875|0.932|
 
 ### MS300k
-1. Download the model checkpoint and identifier from [HERE](); Then untar it with 
+1. Download the model checkpoint and identifier from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtgv9cCPF9a-yfDLhzEA?e=Kgj8lY); Then untar it with 
    ```bash
    tar -xzvf autotsg.ms.tar.gz -C src/data/cache/
    ```

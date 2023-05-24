@@ -2399,11 +2399,12 @@ class BeamDecoder():
                     probs = torch.softmax(next_beam_scores, dim=-1) # (batch_size * num_beams, vocab_size)
                     next_beam_tokens = torch.multinomial(probs, num_samples=1)  # (batch_size * num_beams)
                     next_beam_scores = next_beam_scores.gather(index=next_beam_tokens, dim=-1)
-
-                    next_beam_tokens = next_beam_tokens.view(self.batch_size, self.num_beams)
-                    next_beam_scores = next_beam_scores.view(self.batch_size, self.num_beams)
                 else:
-                    next_beam_scores, next_beam_tokens = torch.max(next_beam_scores, dim=-1).view(self.batch_size, self.num_beams)    # (batch_size, num_beams)
+                    next_beam_scores, next_beam_tokens = torch.max(next_beam_scores, dim=-1)   # (batch_size * num_beams)
+                
+                next_beam_tokens = next_beam_tokens.view(self.batch_size, self.num_beams)
+                next_beam_scores = next_beam_scores.view(self.batch_size, self.num_beams)
+                next_beam_indices = torch.arange(self.num_beams, device=self.device).expand_as(next_beam_tokens)
                 
                 next_beam_indices = torch.arange(self.num_beams, device=self.device).expand_as(next_beam_tokens)
             

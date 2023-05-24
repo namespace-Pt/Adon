@@ -36,7 +36,7 @@ This repository contains the implementation of AutoTSG.
    ```
    - `nproc_per_node` determines how many GPU to use
    - `nbeam` determines beam size
-3. With 4 A100s, the above command should finish within 25 min and yield results very similar to:
+3. With 2 A100s, the above command should finish within 45 min and yield results very similar to:
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
    |:-:|:-:|:-:|:-:|:-:|
    |0.757|0.760|0.690|0.875|0.932|
@@ -52,7 +52,7 @@ This repository contains the implementation of AutoTSG.
    - `nproc_per_node` determines how many GPU to use
    - `code_length` determines the length for the concatenation of terms, which is default to 26
    - `nbeam` determines beam size
-3. With 4 A100s, the above command should finish within seconds and yield results very similar to:
+3. With 2 A100s, the above command should finish within 1 minute and yield results very similar to:
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
    |:-:|:-:|:-:|:-:|:-:|
    |0.484|0.491|0.359|0.766|0.907|

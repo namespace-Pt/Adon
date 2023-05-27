@@ -1,6 +1,11 @@
 # Autoregressive Search Engine with Term-Set Generation (AutoTSG)
 
-This repository contains the implementation of AutoTSG.
+This repository contains the implementation of [AutoTSG](https://arxiv.org/abs/2305.13859).
+
+## Quick Maps
+- For training configurations of AutoTSG, check [train.yaml](src/data/config/mode/train.yaml) and [autotsg.yaml](src/data/config/autotsg.yaml)
+- For the implementation of our proposed *constrained greedy search* algorithm, check [index.py](src/utils/index.py), from line 1731 (we modify the `.generate()` method in huggingface transformers and implement it with a new class named `BeamDecoder`).
+- For interacting with the data and selected terms, download our data and model, then run [autotsg.ipynb](src/notebooks/autotsg.ipynb).
 
 ## Downloading Data
 0. Clone the repository and create the environment
@@ -125,7 +130,7 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
    |:-:|:-:|:-:|:-:|:-:|
    |0.743|0.745|0.671|0.865|0.927|
-2. Sample plausible document identifiers from the trained model.
+2. Sample `3` plausible document identifiers from the trained model (the more samples the better results).
    ```bash
    torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=train ++code_src=iter0 ++eval_batch_size=500 ++decode_do_sample ++sample_tau=5 ++decode_do_greedy
    torchrun --nproc_per_node=2 run.py AutoTSG mode=code ++load_ckpt=iter0 ++sort_code ++nbeam=3 ++eval_set=doct5-miss ++code_src=iter0 ++eval_batch_size=500 ++decode_do_sample ++sample_tau=5 ++decode_do_greedy
@@ -152,7 +157,3 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
    |0.757|0.760|0.690|0.875|0.932|
 
 
-## Quick Maps
-- For training configurations of AutoTSG, check [train.yaml](src/data/config/mode/train.yaml) and [autotsg.yaml](src/data/config/autotsg.yaml)
-- For the implementation of our proposed *constrained greedy search* algorithm, check [index.py](src/utils/index.py) line 1731 (we modify the `.generate()` method in huggingface transformers and implement it with a new class named `BeamDecoder`).
-- For interacting with the data and selected terms, run [autotsg.ipynb](src/notebooks/autotsg.ipynb)

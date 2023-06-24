@@ -24,6 +24,16 @@ This repository contains the implementation of HI2.
    python -m scripts.preprocess base=MSMARCO-passage
    python -m scripts.preprocess base=NQ-open
    ```
+6. Install JAVA that's required by Anserini
+   ```bash
+   cd /the/path/you/like
+   wget https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_linux-x64_bin.tar.gz
+   tar -xvf openjdk-11.0.2_linux-x64_bin.tar.gz
+
+   # just temperarily set; it is recommended that you store the setting in ~/.bashrc
+   export JAVA_HOME=/the/path/you/like/jdk-11.0.2
+   export PATH=$JAVA_HOME/bin:$PATH
+   ```
 
 ## Reproducing from Our Checkpoint
 ### MSMARCO Passage
@@ -32,27 +42,150 @@ This repository contains the implementation of HI2.
    ```bash
    tar -xzvf hi2.msmarco.tar.gz -C src/data/cache/
    ```
-2. ```bash
-   torchrun --nproc_per_node=4 run.py HI2
+2. Prepare [RetroMAE](https://arxiv.org/abs/2205.12035) embeddings:
+   ```bash
+   torchrun --nproc_per_node=4 run.py RetroMAE mode=eval ++save_encode ++plm=retromae_distill
    ```
    - `nproc_per_node` determines how many GPU to use
-3. With 4 A100s, the above command should finish within 1 minutes and yield results very similar to:
-   |MRR@10|Recall@100|Recall@100|
-   |:-:|:-:|:-:|
-   |0.401|0.916|0.976|
+   - `save_encode` creates cached embeddings in `src/data/cache/MSMARCO-passage/encode/RetroMAE`
+   - The results shold be similar to
+      |MRR@10|Recall@100|Recall@1000|
+      |:-:|:-:|:-:|
+      |0.416|0.927|0.988|
+3. Prepare terms:
+   ```bash
+   torchrun --nproc_per_node=4 run.py UniCOIL_d-RetroMAE mode=encode ++save_encode ++text_col=[1,2]
+   ```
+4. Prepare clusters:
+   ```bash
+   torchrun --nproc_per_node=4 run.py TopIVF_d-RetroMAE mode=encode ++save_encode
+   ```
+5. Run HI$^2$:
+   ```bash
+   torchrun --nproc_per_node=4 run.py HI2 ++y_load_encode
+   ```
+   - `nproc_per_node` determines how many processes to parallel (the more the faster). There is no need for GPU.
+   - The searching process should finish within 2 minutes and yield results very similar to:
+      |MRR@10|Recall@100|Recall@1000|
+      |:-:|:-:|:-:|
+      |0.401|0.916|0.976|
+
+#### HI$^2_{\text{unsup}}$
+1. (*Skip if you already have.*) Download the model checkpoint and identifier from [HERE](); Then untar it with 
+   ```bash
+   tar -xzvf hi2.msmarco.tar.gz -C src/data/cache/
+   ```
+2. (*Skip if you already have.*) Prepare [RetroMAE](https://arxiv.org/abs/2205.12035) embeddings:
+   ```bash
+   torchrun --nproc_per_node=4 run.py RetroMAE mode=eval ++save_encode ++plm=retromae_distill
+   ```
+   - `nproc_per_node` determines how many GPU to use
+   - `save_encode` creates cached embeddings in `src/data/cache/MSMARCO-passage/encode/RetroMAE`
+   - The results shold be similar to
+      |MRR@10|Recall@100|Recall@1000|#Documents to Evaluate|
+      |:-:|:-:|:-:|:-:|
+      |0.416|0.927|0.988|56652|
+3. Prepare BM25 token-level index:
+   ```bash
+   torchrun --nproc_per_node=32 run.py BM25 ++pretokenize ++granularity=token
+   ```
+   - `nproc_per_node` determines how many processes to go parallel (there are no GPU requirements)
+   - `pretokenize` tells anserini to skip tokenization
+   - `granularity=token` tells the model to save token-level document vector
+4. Prepare terms:
+   ```bash
+   torchrun --nproc_per_node=32 run.py BM25 mode=encode ++pretokenize ++granularity=token ++save_weight ++save_encode ++text_col=[1,2]
+   ```
+5. Prepare clusters:
+   ```bash
+   python run.py IVF mode=encode ++save_encode
+   ```
+6. Run HI$^2$:
+   ```bash
+   torchrun --nproc_per_node=4 run.py HI2 ++x_model=BM25 ++x_text_gate_k=15 ++y_model=IVF ++y_query_gate_k=25 ++verifier_src=RetroMAE ++y_load_encode
+   ```
+   - `nproc_per_node` determines how many processes to parallel (the more the faster). There is no need for GPU.
+   - `x_text_gate_k` sets how many terms to index for each document
+   - `y_query_gate_k` sets how many clusters to probe for each query
+   - The searching process should finish within 2 minutes and yield results very similar to:
+      |MRR@10|Recall@100|Recall@1000|#Documents to Evaluate|
+      |:-:|:-:|:-:|:-:|
+      |0.380|0.899|0.963|79918|
+
 
 ### Natural Questions
 #### HI$^2_{\text{sup}}$
-1. Download the model checkpoint and identifier from [HERE](); Then untar it with 
+1. Download the model checkpoint from [HERE](); Then untar it with 
    ```bash
    tar -xzvf hi2.nq.tar.gz -C src/data/cache/
    ```
-2. ```bash
-   torchrun --nproc_per_node=4 run.py HI2-NQ
+2. Prepare [AR2](https://arxiv.org/abs/2110.03611) embeddings:
+   ```bash
+   torchrun --nproc_per_node=4 run.py AR2 base=NQ-open mode=eval ++save_encode ++plm=ernie
    ```
    - `nproc_per_node` determines how many GPU to use
-3. With 4 A100s, the above command should finish within 1 minutes and yield results very similar to:
-   |Recall@5|Recall@20|Recall@100|
-   |:-:|:-:|:-:|
-   |0.779|0.861|0.906|
+   - `save_encode` creates cached embeddings in `src/data/cache/NQ-open/encode/AR2`
+   - The results shold be similar to
+      |Recall@5|Recall@20|Recall@100|
+      |:-:|:-:|:-:|
+      |0.779|0.861|0.908|
+3. Prepare terms:
+   ```bash
+   torchrun --nproc_per_node=4 run.py UniCOIL_d-AR2 base=NQ-open mode=encode ++save_encode
+   ```
+4. Prepare clusters:
+   ```bash
+   torchrun --nproc_per_node=4 run.py TopIVF_d-RetroMAE base=NQ-open mode=encode ++save_encode ++embedding_src=AR2 ++vq_src=AR2
+   ```
+5. Run HI$^2$:
+   ```bash
+   torchrun --nproc_per_node=4 run.py HI2-NQ ++y_load_encode
+   ```
+   - `nproc_per_node` determines how many processes to parallel (the more the faster). There is no need for GPU.
+   - The searching process should finish within 1 minute and yield results very similar to:
+      |Recall@5|Recall@20|Recall@100|#Documents to Evaluate|
+      |:-:|:-:|:-:|:-:|
+      |0.779|0.861|0.907|136691|
+
+#### HI$^2_{\text{unsup}}$
+1. (*Skip if you already have.*) Download the model checkpoint and identifier from [HERE](); Then untar it with 
+   ```bash
+   tar -xzvf hi2.nq.tar.gz -C src/data/cache/
+   ```
+2. Prepare [AR2](https://arxiv.org/abs/2110.03611) embeddings:
+   ```bash
+   torchrun --nproc_per_node=4 run.py AR2 base=NQ-open mode=eval ++save_encode ++plm=ernie
+   ```
+   - `nproc_per_node` determines how many GPU to use
+   - `save_encode` creates cached embeddings in `src/data/cache/NQ-open/encode/AR2`
+   - The results shold be similar to
+      |Recall@5|Recall@20|Recall@100|
+      |:-:|:-:|:-:|
+      |0.779|0.861|0.908|
+3. Prepare BM25 token-level index:
+   ```bash
+   torchrun --nproc_per_node=32 run.py BM25 base=NQ-open ++pretokenize ++granularity=token
+   ```
+   - `nproc_per_node` determines how many processes to go parallel (there are no GPU requirements)
+   - `pretokenize` tells anserini to skip tokenization
+   - `granularity=token` tells the model to save token-level document vector
+4. Prepare terms:
+   ```bash
+   torchrun --nproc_per_node=32 run.py BM25 base=NQ-open mode=encode ++pretokenize ++granularity=token ++save_weight ++save_encode
+   ```
+5. Prepare clusters:
+   ```bash
+   python run.py IVF base=NQ-open mode=encode ++save_encode
+   ```
+6. Run HI$^2$:
+   ```bash
+   torchrun --nproc_per_node=4 run.py HI2-NQ ++x_model=BM25 ++x_text_gate_k=20 ++y_model=IVF ++verifier_src=AR2 ++y_load_encode
+   ```
+   - `nproc_per_node` determines how many processes to parallel (the more the faster). There is no need for GPU.
+   - `x_text_gate_k` sets how many terms to index for each document
+   - `y_query_gate_k` sets how many clusters to probe for each query
+   - The searching process should finish within 1 minute and yield results very similar to:
+      |Recall@5|Recall@20|Recall@100|#Documents to Evaluate|
+      |:-:|:-:|:-:|:-:|
+      |0.767|0.853|0.896|135790|
 

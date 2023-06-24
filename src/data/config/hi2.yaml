@@ -12,11 +12,12 @@ base:
 
 model:
   return_embedding: true
-  embedding_src: RetroMAE
+  return_first_mask: true
 
+  embedding_src: RetroMAE
   model_type: uniretriever
 
-  x_model: UniCOIL_title
+  x_model: UniCOIL_d-RetroMAE
   x_index_type: invhit
   x_hits: 0
   x_load_encode: true
@@ -43,6 +44,7 @@ model:
   y_eval_posting_length: true
 
 eval:
+  verifier_hits: 1000
   verifier_type: pq
   verifier_src: DistillVQ_d-RetroMAE
   verifier_index: OPQ96,PQ96x8

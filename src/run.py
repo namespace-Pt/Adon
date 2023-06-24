@@ -46,8 +46,8 @@ def main(config:Config):
     elif config.mode == "migrate":
         from utils.util import load_from_previous
         if config.is_main_proc:
-            path = f"{config.cache_root}/ckpts/{model.name}/{config.load_ckpt}"
-            load_from_previous(model, path)
+            model.load()
+            # load_from_previous(model, path)
             model.save()
 
     elif config.mode == "deploy":

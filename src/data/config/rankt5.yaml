@@ -2,20 +2,22 @@
 defaults:
   - _default
   - base: MSMARCO-passage
-  - model: sparse
-  - index: bm25
-  - mode: eval
+  - model: ranker
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
 base:
-  device: cpu
-  plm: bert
-  eval_batch_size: 1
+  plm: t5
 
 model:
-  model_type: bm25
-  return_first_mask: true
+  model_type: rankt5
+  ranking_token: 32089 # <extra_id_10>
 
-index:
-  pretokenize: false
+  query_prefix: "Query:"
+  text_prefix: "Text:"
+
+train:
+  batch_size: 32
+  learning_rate: 1e-4
+  nneg: 7

@@ -3,19 +3,24 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: sparse
-  - index: bm25
-  - mode: eval
+  - index: invvec
+  - mode: train
   # add _self_ here so that the following arguments can be rewritten
   - _self_
 
-base:
-  device: cpu
-  plm: bert
-  eval_batch_size: 1
-
 model:
-  model_type: bm25
-  return_first_mask: true
+  model_type: sparta
+  text_decode_k: 200
 
 index:
-  pretokenize: false
+  return_first_mask: false
+  load_index: false
+  save_index: false
+
+train:
+  nneg: 7
+  learning_rate: 3e-5
+
+eval:
+  eval_posting_length: true
+  eval_flops: true

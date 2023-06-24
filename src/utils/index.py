@@ -389,17 +389,7 @@ class BaseInvertedIndex(BaseIndex):
         self.posting_prune = posting_prune
 
         # in case the embedding of each token is a scalar
-        if text_embeddings.shape[-1] == 1:
-            if posting_prune > 0:
-                posting_lengths = np.array([len(x) for x in self.text_idx_inverted_lists if len(x) > 0], dtype=np.float32)
-                if self.posting_prune >= 1:
-                    posting_prune = self.posting_prune
-                else:
-                    posting_prune = int(np.percentile(posting_lengths, self.posting_prune * 100))
-
-                self.posting_prune = posting_prune
-                self.logger.info(f"pruning postings by {posting_prune}...")
-            
+        if text_embeddings.shape[-1] == 1:            
             # static posting list prune
             # first sort the posting lists w.r.t. the token weight
             for token_id in tqdm(range(self.token_num), desc="Organizing Posting Lists", ncols=100, leave=False):
@@ -415,14 +405,27 @@ class BaseInvertedIndex(BaseIndex):
                 text_idx_posting_list = text_idx_posting_list[non_zero]
                 token_idx_posting_list = token_idx_posting_list[non_zero]
 
-                if posting_prune > 0:
-                    weight_posting_list = weight_posting_list[non_zero]
-                    sorted_idx = weight_posting_list.argsort(dim=-1)[::-1]
-                    text_idx_inverted_list = text_idx_posting_list[sorted_idx][:self.posting_prune]
-                    token_idx_inverted_list = token_idx_posting_list[sorted_idx][:self.posting_prune]
-
                 self.text_idx_inverted_lists[token_id] = text_idx_posting_list
                 self.token_idx_inverted_lists[token_id] = token_idx_posting_list
+            
+            if posting_prune > 0:
+                posting_lengths = np.array([len(x) for x in self.text_idx_inverted_lists if len(x) > 0], dtype=np.float32)
+                if self.posting_prune >= 1:
+                    posting_prune = self.posting_prune
+                else:
+                    posting_prune = int(np.percentile(posting_lengths, self.posting_prune * 100))
+                self.posting_prune = posting_prune
+                self.logger.info(f"pruning postings by {posting_prune}...")
+                for token_id in tqdm(range(self.token_num), desc="Static Pruning", ncols=100, leave=False):
+                    text_idx_posting_list = self.text_idx_inverted_lists[token_id]
+                    # skip empty postings
+                    if len(text_idx_posting_list) == 0:
+                        continue
+                    token_idx_posting_list = self.token_idx_inverted_lists[token_id] # N
+                    weight_posting_list = self.text_embeddings[text_idx_posting_list, token_idx_posting_list].squeeze(-1)   # N
+                    sorted_idx = np.argsort(weight_posting_list, axis=-1)[::-1]
+                    self.text_idx_inverted_lists[token_id] = text_idx_posting_list[sorted_idx][:self.posting_prune]
+                    self.token_idx_inverted_lists[token_id] = token_idx_posting_list[sorted_idx][:self.posting_prune]
 
 
 

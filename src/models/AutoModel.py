@@ -17,7 +17,7 @@ from .SEAL import SEAL
 from .RankT5 import RankT5
 from .CrossEnc import CrossEncoder
 from .UniCOIL import UniCOIL
-from .UniRetriever import UniRetriever
+from .HI2 import HI2
 from .VQ import DistillVQ
 
 MODEL_MAP = {
@@ -40,7 +40,7 @@ MODEL_MAP = {
     "seal": SEAL,
     "topivf": TopIVF,
     "unicoil": UniCOIL,
-    "uniretriever": UniRetriever
+    "uniretriever": HI2
 }
 
 

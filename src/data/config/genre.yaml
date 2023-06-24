@@ -1,0 +1,37 @@
+# load the default lists, whose parameters can be changed by referencing its namespace in the following
+defaults:
+  - _default
+  - base: NQ320k
+  - model: generative
+  - index: trie
+  - mode: train
+  - extra: code
+  # add _self_ here so that the following arguments can be rewritten
+  - _self_
+
+base:
+  plm: t5
+  parallel: query
+
+model:
+  model_type: genre
+  nbeam: 10
+
+train:
+  bf16: true
+  # only query-pos pair
+  neg_type: none
+  
+  epoch: 80
+  eval_delay: 10e
+
+  learning_rate: 1e-3
+  scheduler: linear
+  batch_size: 400
+  main_metric: MRR@10
+
+
+code:
+  code_type: title
+  code_length: 26
+

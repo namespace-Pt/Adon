@@ -10,7 +10,7 @@ from .ColBERT import ColBERT
 from .DSI import DSI, GENRE, DSIQG
 from .DeepImpact import DeepImpact
 from .DPR import DPR
-from .IVF import IVF, TopIVF, TokIVF
+from .IVF import IVF, TopIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
 from .SEAL import SEAL
@@ -39,7 +39,6 @@ MODEL_MAP = {
     "spladev2": SPLADEv2,
     "seal": SEAL,
     "topivf": TopIVF,
-    "tokivf": TokIVF,
     "unicoil": UniCOIL,
     "uniretriever": UniRetriever
 }

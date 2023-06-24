@@ -26,3 +26,4 @@ train:
   
 eval:
   eval_posting_length: true
+  eval_efficiency: true

@@ -19,11 +19,11 @@ class DistillVQ(BaseDenseModel):
     The model is proposed in `this paper <https://arxiv.org/abs/2204.00185>`_. The implementation here follows its own `git repository <https://github.com/staoxiao/LibVQ>`_.
     """
     def __init__(self, config):
-        assert "PQ" in config.index_type, "DistillVQ is intended for PQ based methods!"
+        # assert "PQ" in config.index_type, "DistillVQ is intended for PQ based methods!"
 
         super().__init__(config)
 
-        index = faiss.read_index(os.path.join(config.cache_root, "index", config.embedding_src, "faiss", config.index_type))
+        index = faiss.read_index(os.path.join(config.cache_root, "index", config.embedding_src, config.text_type, "faiss", config.index_type))
         if isinstance(index, faiss.IndexPreTransform):
             vt = faiss.downcast_VectorTransform(index.chain.at(0))
             opq = faiss.vector_to_array(vt.A).reshape(vt.d_out, vt.d_in).T
@@ -327,6 +327,8 @@ class DistillVQ(BaseDenseModel):
         if self.config.load_index:
             return super().index(loaders)
 
+        print(self.index_dir)
+
         loader_text = loaders["text"]
         text_embeddings = self.encode_text(loader_text).embeddings
 
@@ -341,7 +343,7 @@ class DistillVQ(BaseDenseModel):
                 device=self.config.device,
                 save_dir=self.index_dir,
             )
-            index.load(os.path.join(self.config.cache_root, "index", self.config.embedding_src, "faiss", self.config.index_type))
+            index.load(os.path.join(self.config.cache_root, "index", self.config.embedding_src, self.config.text_type, "faiss", self.config.index_type))
 
             # load opq transformation
             if isinstance(index.index, faiss.IndexPreTransform):

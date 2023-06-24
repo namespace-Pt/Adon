@@ -11,6 +11,7 @@ from torch_scatter import scatter_max
 from transformers import T5ForConditionalGeneration
 from copy import copy
 from tqdm import tqdm
+from functools import reduce
 from typing import Dict, List
 from collections import defaultdict, OrderedDict
 from .util import save_pickle, load_pickle, makedirs, isempty, synchronize, mean, mean_len, MasterLogger
@@ -41,7 +42,7 @@ class FaissIndex():
         index(faiss.Index): the faiss index object
         onGPU(bool): if the index is moved to GPU in :func:`utils.index.FaissIndex.fit`
     """
-    def __init__(self, d:int, index_type:str, metric:DENSE_METRIC, start_text_idx:int, device:DEVICE, save_dir:str, **kwargs):
+    def __init__(self, d:int, index_type:str, metric:DENSE_METRIC, start_text_idx:int, device:DEVICE, save_dir:str, thread_num=None, **kwargs):
         """
         Args:
             d: embedding dimension
@@ -65,8 +66,13 @@ class FaissIndex():
             metric = faiss.METRIC_INNER_PRODUCT
         index = faiss.index_factory(d, index_type, metric)
 
+        if "efConstruction" in kwargs and kwargs["efConstruction"] and "HNSW" in self.name:
+            index.hnsw.efConstruction = kwargs["efConstruction"]
+
         self.index = index
         self.onGPU = False
+        if thread_num is not None:
+            faiss.omp_set_num_threads(thread_num)
 
 
     def load(self, load_path:Optional[str]=None):
@@ -290,8 +296,8 @@ class BaseInvertedIndex(BaseIndex):
 
         self.special_token_ids = special_token_ids
 
-        self.text_idx_inverted_lists_path = os.path.join(save_dir, f"text_idx_inverted_lists_{rank}.pt")
-        self.token_idx_inverted_lists_path = os.path.join(save_dir, f"token_idx_inverted_lists_{rank}.pt")
+        self.text_idx_inverted_lists_path = os.path.join(save_dir, f"text_idx_inverted_lists_{rank}.npy")
+        self.token_idx_inverted_lists_path = os.path.join(save_dir, f"token_idx_inverted_lists_{rank}.npy")
 
 
     def fit(self, text_token_ids:np.ndarray, text_embeddings:np.ndarray, load_index:bool=True, save_index:bool=True, threads:int=16, shards:int=32, posting_prune:float=0.0, start_text_idx:int=0):
@@ -318,8 +324,8 @@ class BaseInvertedIndex(BaseIndex):
 
         # load the posting lists when we specify load_index, or when the model do not need to rebuild index
         if load_index and os.path.exists(self.text_idx_inverted_lists_path):
-            self.text_idx_inverted_lists = torch.load(self.text_idx_inverted_lists_path, map_location=self.device)
-            self.token_idx_inverted_lists = torch.load(self.token_idx_inverted_lists_path, map_location=self.device)
+            self.text_idx_inverted_lists = np.load(self.text_idx_inverted_lists_path, allow_pickle=True)
+            self.token_idx_inverted_lists = np.load(self.token_idx_inverted_lists_path, allow_pickle=True)
         # construct posting lists when the model needs to rebuild index, or when the posting lists doesn't exist
         else:
             text_num_per_thread = len(text_token_ids) / shards
@@ -358,15 +364,20 @@ class BaseInvertedIndex(BaseIndex):
             for i in tqdm(range(self.token_num), ncols=100, leave=False):
                 text_indices = text_idx_inverted_lists[i]
                 if len(text_indices):
-                    text_idx_inverted_lists[i] = torch.tensor(text_indices, device=self.device, dtype=torch.int32)
-                    token_idx_inverted_lists[i] = torch.tensor(token_idx_inverted_lists[i], device=self.device, dtype=torch.int16)
+                    text_idx_inverted_lists[i] = np.array(text_indices, dtype=np.int32)
+                    token_idx_inverted_lists[i] = np.array(token_idx_inverted_lists[i], dtype=np.int16)
+                else:
+                    text_idx_inverted_lists[i] = np.array([])
+                    token_idx_inverted_lists[i] = np.array([])
+            text_idx_inverted_lists = np.array(text_idx_inverted_lists, dtype=object)
+            token_idx_inverted_lists = np.array(token_idx_inverted_lists, dtype=object)
 
             # save the posting lists when we specify save_index or when the model doesn't need to rebuild index every time
             if save_index:
                 self.logger.info(f"saving index at {self.save_dir}...")
                 os.makedirs(self.save_dir, exist_ok=True)
-                torch.save(text_idx_inverted_lists, self.text_idx_inverted_lists_path)
-                torch.save(token_idx_inverted_lists, self.token_idx_inverted_lists_path)
+                np.save(self.text_idx_inverted_lists_path, text_idx_inverted_lists)
+                np.save(self.token_idx_inverted_lists_path, token_idx_inverted_lists)
             self.text_idx_inverted_lists = text_idx_inverted_lists
             self.token_idx_inverted_lists = token_idx_inverted_lists
 
@@ -379,32 +390,6 @@ class BaseInvertedIndex(BaseIndex):
 
         # in case the embedding of each token is a scalar
         if text_embeddings.shape[-1] == 1:
-            # static posting list prune
-            # first sort the posting lists w.r.t. the token weight
-            for token_id in tqdm(range(self.token_num), desc="Organizing Posting Lists", ncols=100, leave=False):
-                text_idx_posting_list = self.text_idx_inverted_lists[token_id]
-                # skip empty postings
-                if len(text_idx_posting_list) == 0:
-                    continue
-
-                text_idx_posting_list = text_idx_posting_list.long()    # N
-                token_idx_posting_list = self.token_idx_inverted_lists[token_id].long() # N
-
-                weight_posting_list = self.text_embeddings[text_idx_posting_list, token_idx_posting_list].squeeze(-1)   # N
-
-                non_zero = weight_posting_list > 0
-                text_idx_posting_list = text_idx_posting_list[non_zero]
-                token_idx_posting_list = token_idx_posting_list[non_zero]
-
-                if posting_prune > 0:
-                    weight_posting_list = weight_posting_list[non_zero]
-                    _, sorted_idx = weight_posting_list.sort(dim=-1, descending=True)
-                    text_idx_inverted_list = text_idx_posting_list[sorted_idx]
-                    token_idx_inverted_list = token_idx_posting_list[sorted_idx]
-
-                self.text_idx_inverted_lists[token_id] = text_idx_posting_list
-                self.token_idx_inverted_lists[token_id] = token_idx_posting_list
-
             if posting_prune > 0:
                 posting_lengths = np.array([len(x) for x in self.text_idx_inverted_lists if len(x) > 0], dtype=np.float32)
                 if self.posting_prune >= 1:
@@ -414,15 +399,30 @@ class BaseInvertedIndex(BaseIndex):
 
                 self.posting_prune = posting_prune
                 self.logger.info(f"pruning postings by {posting_prune}...")
+            
+            # static posting list prune
+            # first sort the posting lists w.r.t. the token weight
+            for token_id in tqdm(range(self.token_num), desc="Organizing Posting Lists", ncols=100, leave=False):
+                text_idx_posting_list = self.text_idx_inverted_lists[token_id]
+                # skip empty postings
+                if len(text_idx_posting_list) == 0:
+                    continue
+                token_idx_posting_list = self.token_idx_inverted_lists[token_id] # N
 
+                weight_posting_list = self.text_embeddings[text_idx_posting_list, token_idx_posting_list].squeeze(-1)   # N
 
-    def _prune_posting_list(self, posting_list):
-        """
-        Shortcut for posting pruning.
-        """
-        if self.posting_prune > 0:
-            posting_list = posting_list[:self.posting_prune]
-        return posting_list
+                non_zero = weight_posting_list > 0
+                text_idx_posting_list = text_idx_posting_list[non_zero]
+                token_idx_posting_list = token_idx_posting_list[non_zero]
+
+                if posting_prune > 0:
+                    weight_posting_list = weight_posting_list[non_zero]
+                    sorted_idx = weight_posting_list.argsort(dim=-1)[::-1]
+                    text_idx_inverted_list = text_idx_posting_list[sorted_idx][:self.posting_prune]
+                    token_idx_inverted_list = token_idx_posting_list[sorted_idx][:self.posting_prune]
+
+                self.text_idx_inverted_lists[token_id] = text_idx_posting_list
+                self.token_idx_inverted_lists[token_id] = token_idx_posting_list
 
 
 
@@ -442,43 +442,27 @@ class InvertedHitIndex(BaseInvertedIndex):
             verifier: the verifier to post rank the hitted results
         """
         retrieval_result = {}
-        global_score = torch.zeros(self.text_num, device=self.device)
         if eval_posting_length:
             posting_lists_length = np.zeros(query_token_ids.shape[0])
         else:
             posting_lists_length = None
+        
+        stop_token_ids = np.array([-1, *list(self.special_token_ids)])
 
         for qidx, token_ids in enumerate(tqdm(query_token_ids, ncols=100, leave=False)):
-            global_score[:] = 0.
-            for j, token_id in enumerate(token_ids):
-                if token_id == -1 or token_id in self.special_token_ids:
-                    continue
+            stop_token_id_pos = (token_ids[:, None] == stop_token_ids).any(-1)
+            token_ids = token_ids[~stop_token_id_pos]
 
-                text_idx_posting_list = self.text_idx_inverted_lists[token_id]   # n
-                if len(text_idx_posting_list) == 0:
-                    continue
-
-                text_idx_posting_list = text_idx_posting_list.long()
-                text_idx_posting_list = self._prune_posting_list(text_idx_posting_list)
-
-                if eval_posting_length:
-                    posting_lists_length[qidx] += len(text_idx_posting_list)
-
-                # map the text idx to global scale
-                # count the hit frequency
-                global_score[text_idx_posting_list] += 1
-
-            tindices = global_score.nonzero().squeeze(-1)
-            tscores = global_score[tindices]
+            tindices = self.text_idx_inverted_lists[token_ids]
+            tindices = np.unique(reduce(np.union1d, tindices)).astype(np.int32)
+            if eval_posting_length:
+                posting_lists_length[qidx] = len(tindices)
 
             if verifier is not None:
                 tindices, tscores = verifier(qidx, tindices)
 
             # offset the text idx by the starting idx, because each process maintains a segment of corpus
             retrieval_result[qidx + query_start_idx] = list(zip((tindices + self.start_text_idx).tolist(), tscores.tolist()))
-
-            if eval_posting_length:
-                posting_lists_length[qidx] = (global_score > 0).sum()
 
         return retrieval_result, posting_lists_length
 
@@ -505,16 +489,11 @@ class InvertedVectorIndex(BaseInvertedIndex):
             verifier: the verifier to post rank the hitted results
         """
         assert hits > 0
-        if isinstance(query_embeddings, np.ndarray):
-            if not query_embeddings.flags.writeable:
-                query_embeddings = query_embeddings.copy()
-            query_embeddings = torch.as_tensor(query_embeddings, device=self.device)
-
         retrieval_result = {}
 
-        global_score = torch.zeros(self.text_num, device=self.device)
+        global_score = np.zeros(self.text_num, dtype=np.float32)
         if eval_posting_length:
-            posting_lists_length = np.zeros(query_token_ids.shape[0])
+            posting_lists_length = np.zeros(query_token_ids.shape[0], dtype=np.int32)
         else:
             posting_lists_length = None
 
@@ -527,17 +506,12 @@ class InvertedVectorIndex(BaseInvertedIndex):
                 text_idx_posting_list = self.text_idx_inverted_lists[token_id]   # n
                 if len(text_idx_posting_list) == 0:
                     continue
-
-                text_idx_posting_list = text_idx_posting_list.long()
-                token_idx_posting_list = self.token_idx_inverted_lists[token_id].long()
-
-                text_idx_posting_list = self._prune_posting_list(text_idx_posting_list)
-                token_idx_posting_list = self._prune_posting_list(token_idx_posting_list)
+                token_idx_posting_list = self.token_idx_inverted_lists[token_id]
 
                 embedding_posting_list = self.text_embeddings[text_idx_posting_list, token_idx_posting_list]
                 if query_embeddings is not None:
                     token_embedding = query_embeddings[qidx, j]
-                    if token_embedding.size(0) == 1 and token_embedding == 0:
+                    if token_embedding.shape[0] == 1 and token_embedding == 0:
                         continue
                     score = embedding_posting_list @ token_embedding  # n
                 else:
@@ -545,12 +519,13 @@ class InvertedVectorIndex(BaseInvertedIndex):
                     score = embedding_posting_list.squeeze(-1)
 
                 if embedding_posting_list.shape[-1] > 1:
-                    score = scatter_max(score, index=text_idx_posting_list, dim_size=self.text_num)[0]
+                    score = scatter_max(torch.from_numpy(score), index=torch.from_numpy(text_idx_posting_list).long(), dim_size=self.text_num)[0]
                     global_score += score
                 else:
                     global_score[text_idx_posting_list] += score
 
-            tscores, tindices = global_score.topk(hits)  # k
+            tindices = np.argpartition(-global_score, hits, axis=-1)[:hits]
+            tscores = global_score[tindices]
 
             if verifier is not None:
                 tindices, tscores = verifier(qidx, tindices)
@@ -641,7 +616,10 @@ class BaseAnseriniIndex(BaseIndex):
                     else:
                         words = tokens
                 else:
-                    words = self.tokenizer.decode(token_ids, skip_special_tokens=True).split(" ")
+                    if self.granularity == "word":
+                        words = self.tokenizer.decode(token_ids, skip_special_tokens=True).split(" ")
+                    else:
+                        words = self.tokenizer.convert_ids_to_tokens(token_ids, skip_special_tokens=True)
                     # in case only pretokenize, no weights
                     scores = [1] * len(words)
 
@@ -950,8 +928,7 @@ class AnseriniBM25Index(BaseAnseriniIndex):
                     -generator DefaultLuceneDocumentGenerator \
                     -input {self.collection_dir} \
                     -index {self.index_dir} \
-                    -threads 32 \
-                    -storeDocvectors \
+                    -threads 32 -storeDocvectors\
                     -language {language}
                     """,
                     shell=True
@@ -974,7 +951,7 @@ class AnseriniBM25Index(BaseAnseriniIndex):
                     -input {self.collection_dir} \
                     -index {self.index_dir} \
                     -threads 32 \
-                    -storeDocvectors -pretokenized \
+                    -pretokenized -storeDocvectors\
                     -language {language}
                     """,
                     shell=True
@@ -1867,6 +1844,7 @@ class BeamDecoder():
                 self.eos_hidden_states[i] = [x[2] for x in batch_beams]
             if has_text_idx:
                 self.prev_text_indices[i] = [x[3] for x in batch_beams]
+                self.prev_words[i] = [x[4] for x in batch_beams]
             self.beams[i] = [x[0] for x in batch_beams]
         
 
@@ -2399,12 +2377,11 @@ class BeamDecoder():
                     probs = torch.softmax(next_beam_scores, dim=-1) # (batch_size * num_beams, vocab_size)
                     next_beam_tokens = torch.multinomial(probs, num_samples=1)  # (batch_size * num_beams)
                     next_beam_scores = next_beam_scores.gather(index=next_beam_tokens, dim=-1)
-
-                    next_beam_tokens = next_beam_tokens.view(self.batch_size, self.num_beams)
-                    next_beam_scores = next_beam_scores.view(self.batch_size, self.num_beams)
                 else:
-                    next_beam_scores, next_beam_tokens = torch.max(next_beam_scores, dim=-1).view(self.batch_size, self.num_beams)    # (batch_size, num_beams)
+                    next_beam_scores, next_beam_tokens = torch.max(next_beam_scores, dim=-1)   # (batch_size * num_beams)
                 
+                next_beam_tokens = next_beam_tokens.view(self.batch_size, self.num_beams)
+                next_beam_scores = next_beam_scores.view(self.batch_size, self.num_beams)
                 next_beam_indices = torch.arange(self.num_beams, device=self.device).expand_as(next_beam_tokens)
             
             else:
@@ -2536,6 +2513,8 @@ class PQVerifier(BasePostVerifier):
             tindices = tindices.cpu().numpy()
         elif isinstance(tindices, list):
             tindices = np.array(tindices)
+        elif isinstance(tindices, np.ndarray):
+            pass
         else:
             raise NotImplementedError(f"Unsupported tindices type {type(tindices)}")
 

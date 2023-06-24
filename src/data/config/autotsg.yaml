@@ -21,7 +21,7 @@ train:
   # only query-pos pair
   neg_type: none
   epoch: 50
-  batch_size: 400
+  batch_size: 200
   bf16: true
 
   learning_rate: 1e-3

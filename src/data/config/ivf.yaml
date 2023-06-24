@@ -14,11 +14,15 @@ model:
   query_gate_k: 20
 
   vq_src: RetroMAE
-  vq_index: IVF10000,PQ64x8
+  vq_index: IVF10000,PQ96x8
   embedding_src: RetroMAE
   return_embedding: true
 
   load_ckpt: none
+
+index:
+  load_index: false
+  save_index: false
 
 eval:
   hits: 0

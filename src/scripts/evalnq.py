@@ -128,7 +128,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--retrieval_result_path")
     parser.add_argument("--query_answer_path", default="../../../Data/NQ/nq-test.qa.csv")
-    parser.add_argument("--collection_path", default="../../../Data/NQ/collection.tsv")
+    parser.add_argument("--collection_path", deault="../../../Data/NQ/collection.tsv")
     args = parser.parse_args()
 
     with open(args.retrieval_result_path, "rb") as f:

@@ -15,6 +15,30 @@ class BM25(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
         self.tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
+    
+    def encode_text_step(self, x):
+        if self.config.get("save_weight"):
+            text_idx = x["text_idx"].tolist()
+            text_token_id = x["text"]["input_ids"].numpy()
+            text_token_embedding = np.zeros((*text_token_id.shape, self._output_dim), dtype=np.float32)
+
+            for i, (tidx, batch_token_id) in enumerate(zip(text_idx, text_token_id)):
+                tokens = self.tokenizer.convert_ids_to_tokens(batch_token_id)
+                for j, token in enumerate(tokens):
+                    if token not in self.stop_words["special_tokens"]:
+                        text_token_embedding[i, j] = self.pretokenize_index.compute_bm25_term_weight(str(tidx), token, analyzer=None)
+
+            if "text_first_mask" in x:
+                # mask the duplicated tokens' weight
+                text_first_mask = x["text_first_mask"].numpy()
+                text_token_embedding[~text_first_mask] = 0
+            else:
+                text_token_embedding[~x["text"]["attention_mask"].bool().numpy()] = 0
+
+            return text_token_id, text_token_embedding
+
+        else:
+            return super().encode_text_step(x)
 
     @synchronize
     @torch.no_grad()
@@ -30,6 +54,11 @@ class BM25(BaseSparseModel):
             the text token embedding for indexing, array of [B, L, D]
         """
         if self.config.pretokenize:
+            if self.config.get("save_weight"):
+                from pyserini.index.lucene import IndexReader
+                self.pretokenize_index = IndexReader(os.path.join(self.index_dir, "index"))
+                assert self.config.save_encode
+                assert not self.config.load_encode and not self.config.load_text_encode
             return BaseSparseModel.encode_text(self, *args, **kwargs)
         else:
             return BaseOutput()

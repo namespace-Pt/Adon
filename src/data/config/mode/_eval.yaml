@@ -3,13 +3,14 @@
 # evaluation metrics, seperated by colon
 eval_metric: [mrr, recall]
 # the cutoff for each evaluation metric
-eval_metric_cutoff: [1,5,10,100,1000]
+eval_metric_cutoff: [1,5,10,50,100,1000]
 # the cutoff for retrieval result
 hits: 1000
 # evaluate flops?
 eval_flops: false
 # evaluate posting length in inverted indexes?
 eval_posting_length: false
+eval_efficiency: true
 
 # the post verifier
 verifier_type: none

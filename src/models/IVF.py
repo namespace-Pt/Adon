@@ -15,7 +15,7 @@ class IVF(BaseSparseModel):
     def __init__(self, config):
         super().__init__(config)
 
-        path = os.path.join(config.cache_root, "index", config.vq_src, "faiss", config.vq_index)
+        path = os.path.join(config.cache_root, "index", config.vq_src, config.text_type, "faiss", config.vq_index)
         self.logger.info(f"loading index from {path}...")
         index = faiss.read_index(path)
         if isinstance(index, faiss.IndexPreTransform):
@@ -181,22 +181,4 @@ class TopIVF(IVF):
             loss += self._compute_loss(score_commit, label_commit)
 
         return loss
-
-
-class TokIVF(UniCOIL):
-    """
-    Uses explicit tokens as IVF entries.
-    """
-    def __init__(self, config):
-        super().__init__(config)
-        self.queryEncoder = None
-
-
-    def _encode_query(self, **kwargs):
-        token_embedding = torch.ones_like(kwargs["input_ids"], dtype=torch.float).unsqueeze(-1)
-        return token_embedding
-
-
-    def encode_query_step(self, x):
-        return BaseSparseModel.encode_query_step(self, x)
 

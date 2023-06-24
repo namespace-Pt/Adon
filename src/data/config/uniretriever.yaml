@@ -9,7 +9,7 @@ defaults:
 
 mode:
   verifier_type: flat
-  verifier_src: AR2
+  verifier_src: RetroMAE
   # verifier_index: OPQ96,PQ96x8
 
 eval:
@@ -17,7 +17,7 @@ eval:
   load_index: true
 
   x_model: BM25
-  x_index_type: bm25
+  x_index_type: invhit
   x_hits: 1000
 
   y_model: AR2

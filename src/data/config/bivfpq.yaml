@@ -3,7 +3,9 @@ defaults:
   - _default
   - base: MSMARCO-passage
   - model: _default
+  - index: _default
   - mode: eval
+  - _self_
 
 base:
   text_col: [1, 2]
@@ -14,19 +16,25 @@ model:
 
   model_type: uniretriever
 
-  x_model: TokIVF
+  x_model: UniCOIL_title
   x_index_type: invhit
   x_hits: 0
   x_load_encode: true
+  x_load_text_encode: false
+  x_load_query_encode: false
+  x_load_index: true
   x_text_gate_k: 3
   x_load_ckpt: best
-  x_posting_prune: 0.996
+  x_posting_prune: 0
 
   y_model: TopIVF
   y_index_type: invhit
   y_hits: 0
   y_load_encode: false
-  y_query_gate_k: 20
+  y_save_index: false
+  y_load_text_encode: false
+  y_load_query_encode: false
+  y_query_gate_k: 30
   y_load_ckpt: best
 
   x_eval_flops: false

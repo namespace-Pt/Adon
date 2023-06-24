@@ -47,6 +47,100 @@ class AutoTSG(DSI):
         else:
             raise NotImplementedError(f"Reduction type {self.config.reduce_code} is not implemented!")
         return loss
+
+    def retrieve(self, loaders):
+        import os
+        from tqdm import tqdm
+        from utils.index import BeamDecoder
+        from collections import defaultdict
+
+        index = self.index(loaders).index
+        loader_query = loaders["query"]
+
+        retrieval_result = {}
+
+        self.logger.info("searching...")
+        start_idx = 0
+        # in case the query is parallel
+        query_start_idx = loader_query.sampler.start
+
+        beam_decoder = BeamDecoder()
+
+        tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
+        
+        new_query_file = open(os.path.join(self.config.data_root, self.config.dataset, "queries.autotsg_no_es.tsv"), "w")
+        
+        for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
+            # if not (x["query_idx"].unsqueeze(-1) == torch.tensor([1466])).any():
+            #     continue
+
+            query = self._move_to_device(x["query"])
+            encoder_outputs = self.plm.encoder(**query)
+            B = query["input_ids"].shape[0]
+            end_idx = start_idx + B
+
+            beam_decoder.search(
+                model=self.plm, 
+                query={**query, "encoder_outputs": encoder_outputs},
+                nbeam=self.config.nbeam, 
+                threshold=self.config.beam_trsd, 
+                trsd_start_len=self.config.trsd_start_len, 
+                max_new_tokens=self.config.code_length - 1, 
+                constrain_index=index,
+                rank_type=self.config.rank_type,
+                tokenizer=tokenizer,
+                do_sample=self.config.decode_do_sample,
+                do_greedy=self.config.decode_do_greedy,
+                topk=self.config.sample_topk,
+                topp=float(self.config.sample_topp) if self.config.sample_topp is not None else None,
+                typical_p=float(self.config.sample_typicalp) if self.config.sample_typicalp is not None else None,
+                temperature=float(self.config.sample_tau) if self.config.sample_tau is not None else None,
+                renormalize_logits=self.config.decode_renorm_logit,
+                do_early_stop=self.config.get("wordset_early_stop"),
+                early_stop_start_len=self.config.get("early_stop_start_len"),
+            )
+            beams = beam_decoder.beams
+            eos_hidden_states = beam_decoder.eos_hidden_states
+
+            # get the first beam
+            first_beam = [beam[0] for beam in beams]
+            query_token_id = x["query"]["input_ids"]
+            query_idx = x["query_idx"].tolist()
+            for q, b, idx in zip(query_token_id, first_beam, query_idx):
+                b = [c for c in b if c != index.sep_token_id]
+                q = tokenizer.decode(q, skip_special_tokens=True)
+                b = tokenizer.decode(b, skip_special_tokens=True)
+                line = str(idx) + "\t" + q + " " + b + "\n"
+                new_query_file.write(line)
+
+            # ranking by score
+            if self.config.rank_type == "eos":
+                eos_hidden_states = torch.stack(sum(eos_hidden_states, []), dim=0)
+                scores = self.scorer(eos_hidden_states).squeeze(-1).tolist()
+            elif self.config.rank_type == "prob":            
+                # ranking by generation prob
+                scores = sum(beam_decoder.seq_scores, [])
+            else:
+                raise NotImplementedError(f"Ranking type {self.config.ranking_type} is not implemented yet!")
+
+            offset = 0
+            for j, batch in enumerate(beams):
+                res = defaultdict(list)
+                for k, c in enumerate(batch):
+                    # need to provide prev_text_indices
+                    ids = beam_decoder.prev_text_indices[j][k]
+                    for id in ids:
+                        res[id].append(scores[offset + k])
+                offset += len(batch)
+                retrieval_result[j + start_idx + query_start_idx] = [(k, max(v)) for k, v in res.items()]
+
+            start_idx = end_idx
+
+            if self.config.get("debug") and i > 1:
+                break
+        
+        new_query_file.close()
+        return retrieval_result
     
     def generate_code(self, loaders):
         """

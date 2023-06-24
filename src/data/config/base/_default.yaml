@@ -1,6 +1,6 @@
 # the root directory of the raw data
-data_root: /share/project/peitian/Data/Adon
-plm_root: /share/project/peitian/Data/huggingface-PLMs
+data_root: /data/HI2
+plm_root: /data/HI2/huggingface-PLMs
 seed: 42
 
 # the device to run the model or script

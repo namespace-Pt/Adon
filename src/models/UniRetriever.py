@@ -14,10 +14,12 @@ class UniRetriever(BaseModel):
                 "data_root": config.data_root,
                 "plm_root": config.plm_root,
                 "text_col": config.text_col,
+                "text_type": config.text_type,
                 "device": config.get("x_device", config.device),
                 "verifier_type": config.verifier_type,
                 "verifier_src": config.verifier_src,
-                "verifier_index": config.verifier_index
+                "verifier_index": config.verifier_index,
+                "save_res": config.save_res,
             }
             for k,v in config.items():
                 if k.startswith("x_") and k != "x_model":
@@ -32,10 +34,12 @@ class UniRetriever(BaseModel):
                 "data_root": config.data_root,
                 "plm_root": config.plm_root,
                 "text_col": config.text_col,
+                "text_type": config.text_type,
                 "device": config.get("y_device", config.device),
                 "verifier_type": config.verifier_type,
                 "verifier_src": config.verifier_src,
-                "verifier_index": config.verifier_index
+                "verifier_index": config.verifier_index,
+                "save_res": config.save_res,
             }
             for k,v in config.items():
                 if k.startswith("y_") and k != "y_model":
@@ -68,19 +72,19 @@ class UniRetriever(BaseModel):
         else:
             y_retrieval_result = {}
 
-        try:
-            posting_length = self.metrics["X Posting_List_Length"] + self.metrics["Y Posting_List_Length"]
-            flops = round((posting_length) * 48 / len(loaders["text"].dataset), 2)
-            self.metrics.update({"Posting_List_length": posting_length, "FLOPs": flops})
-        except:
-            pass
+        posting_length = 0
+        if "X Posting_List_Length" in self.metrics:
+            posting_length += self.metrics["X Posting_List_Length"]
+        if "Y Posting_List_Length" in self.metrics:
+            posting_length += self.metrics["Y Posting_List_Length"]            
+        self.metrics.update({"Posting_List_Length": posting_length})
 
-        if self.config.get("save_intm_result"):
-            self.XModel._gather_retrieval_result(
+        if self.config.get("save_intm_res"):
+            self.XModel.gather_retrieval_result(
                 x_retrieval_result,
                 retrieval_result_path=os.path.join(self.retrieve_dir, "x_retrieval_result.pkl")
             )
-            self.YModel._gather_retrieval_result(
+            self.YModel.gather_retrieval_result(
                 y_retrieval_result,
                 retrieval_result_path=os.path.join(self.retrieve_dir, "y_retrieval_result.pkl")
             )

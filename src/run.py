@@ -4,7 +4,6 @@ from omegaconf import OmegaConf
 from utils.util import Config
 from utils.data import prepare_data
 from models.AutoModel import MODEL_MAP
-
 name = None
 
 @hydra.main(version_base=None, config_path="data/config/")

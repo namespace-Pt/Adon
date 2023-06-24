@@ -429,7 +429,7 @@ class BaseModel(nn.Module):
                     dtype=np.float32
                 ).reshape(len(loader_text.dataset), -1)[start_text_idx: end_text_idx].copy()
             elif self.config.verifier_type == "pq":
-                pq_index = faiss.read_index(os.path.join(self.config.cache_root, "index", self.config.verifier_src, "faiss", self.config.verifier_index))
+                pq_index = faiss.read_index(os.path.join(self.config.cache_root, "index", self.config.verifier_src, self.config.text_type, "faiss", self.config.verifier_index))
 
             verifier = VERIFIER_MAP[self.config.verifier_type](
                 query_embeddings=query_embeddings,
@@ -578,7 +578,7 @@ class BaseModel(nn.Module):
                     markdown_format_metric = "|".join([str(metrics["MRR@5"]), str(metrics["MRR@10"]), str(metrics["Recall@5"]), str(metrics["Recall@10"])]) + "|"
                     markdown_format_metric += "\t" + "|".join([str(metrics["MRR@10"]), str(metrics["MRR@100"]), str(metrics["Recall@1"]), str(metrics["Recall@10"]), str(metrics["Recall@100"])]) + "|"
                 else:
-                    markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
+                    markdown_format_metric = "|".join([str(metrics["MRR@10"]), str(metrics["Recall@100"]), str(metrics["Recall@1000"])]) + "|"
             except:
                 markdown_format_metric = ""
             if "FLOPs" in metrics:
@@ -587,6 +587,9 @@ class BaseModel(nn.Module):
                 markdown_format_metric += str(metrics["Posting_List_Length"]) + "|"
             if "X Posting_List_Length" in metrics and "Y Posting_List_Length" in metrics:
                 markdown_format_metric += str(metrics["X Posting_List_Length"] + metrics["Y Posting_List_Length"]) + "|"
+            if "Query_Latency" in metrics:
+                markdown_format_metric += str(metrics["Query_Latency"]) + "|"
+
             f.write(markdown_format_metric + "\n")
             f.write("\n")
 
@@ -688,6 +691,12 @@ class BaseSparseModel(BaseModel):
         self._text_length = self.config.text_length
         self._query_length = self.config.query_length
 
+        self.stop_words = {
+            "punctuations": set([x for x in ";:'\\\"`~[]<>()\{\}/|?!@$#%^&*…-_=+,."]),
+            "nltk_stop_words": set(["a", "about", "also", "am", "to", "an", "and", "another", "any", "anyone", "are", "aren't", "as", "at", "be", "been", "being", "but", "by", "despite", "did", "didn't", "do", "does", "doesn't", "doing", "done", "don't", "each", "etc", "every", "everyone", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't", "having", "he", "he'd", "he'll", "her", "here", "here's", "hers", "herself", "he's", "him", "himself", "his", "however", "i", "i'd", "if", "i'll", "i'm", "in", "into", "is", "isn't", "it", "its", "it's", "itself", "i've", "just", "let's", "like", "lot", "may", "me", "might", "mightn't", "my", "myself", "no", "nor", "not", "of", "on", "onto", "or", "other", "ought", "oughtn't", "our", "ours", "ourselves", "out", "over", "shall", "shan't", "she", "she'd", "she'll", "she's", "since", "so", "some", "something", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "tht", "to", "too", "usually", "very", "via", "was", "wasn't", "we", "we'd", "well", "we'll", "were", "we're", "weren't", "we've", "will", "with", "without", "won't", "would", "wouldn't", "yes", "yet", "you", "you'd", "you'll", "your", "you're", "yours", "yourself", "yourselves", "you've"]),
+            "special_tokens": set([x[0] for x in self.config.special_token_ids.values()])
+        }
+
         # override index_dir
         if self.config.index_type == "impact":
             self.index_dir = os.path.join(self.index_dir, self.config.granularity)
@@ -716,27 +725,25 @@ class BaseSparseModel(BaseModel):
         return overlapping_mask
 
 
-    def _gate_text(self, text_token_weights:np.ndarray, k:Optional[int]=None):
+    def _gate_content(self, token_weights:np.ndarray, k:int):
         """
-        Gate the text token weights so that only the top ``config.query_gate_k`` tokens are valid. Keep the text_token_ids because we will use it to construct the entire inverted lists.
+        Gate the token weights so that only the top ``k`` tokens are valid. Keep the text_token_ids because we will use it to construct the entire inverted lists.
 
         Args:
-            query_embeddings: [N, L, 1]
+            token_embeddings: [N, k, 1]
         """
-        if k is None:
-            k = self.config.text_gate_k
-        if k > 0 and k < text_token_weights.shape[1]:
+        if k > 0 and k < token_weights.shape[1]:
             # the original one is read-only
-            text_token_weights = text_token_weights.copy()
+            token_weights = token_weights.copy()
 
-            self.logger.info(f"gating text by {k}...")
-            assert text_token_weights.shape[-1] == 1
-            text_token_weights = text_token_weights.squeeze(-1)
-            non_topk_indices = np.argpartition(-text_token_weights, k)[:, k:]
-            np.put_along_axis(text_token_weights, non_topk_indices, values=0, axis=-1)
+            self.logger.info(f"gating by {k}...")
+            assert token_weights.shape[-1] == 1
+            token_weights = token_weights.squeeze(-1)
+            non_topk_indices = np.argpartition(-token_weights, k)[:, k:]
+            np.put_along_axis(token_weights, non_topk_indices, values=0, axis=-1)
             # append the last dimension
-            text_token_weights = np.expand_dims(text_token_weights, axis=-1)
-        return text_token_weights
+            token_weights = np.expand_dims(token_weights, axis=-1)
+        return token_weights
 
 
     def encode_text_step(self, x):
@@ -853,7 +860,7 @@ class BaseSparseModel(BaseModel):
                     loader=loader_text,
                     obj=text_embeddings
                 )
-        text_embeddings = self._gate_text(text_embeddings)
+        text_embeddings = self._gate_content(text_embeddings, self.config.text_gate_k)
         return BaseOutput(embeddings=text_embeddings, token_ids=text_token_ids)
 
 
@@ -929,6 +936,7 @@ class BaseSparseModel(BaseModel):
                     obj=query_embeddings
                 )
 
+        query_embeddings = self._gate_content(query_embeddings, self.config.query_gate_k)
         return BaseOutput(embeddings=query_embeddings, token_ids=query_token_ids)
 
 
@@ -940,7 +948,7 @@ class BaseSparseModel(BaseModel):
 
         text_embeddings = encode_output.embeddings
         text_token_ids = encode_output.token_ids
-        text_embeddings_tensor = torch.as_tensor(text_embeddings.copy(), device=self.config.device)
+        # text_embeddings_tensor = torch.as_tensor(text_embeddings.copy(), device=self.config.device)
 
         # invvec and invhit share the same inverted index
         save_dir = os.path.join(self.config.cache_root, "index", self.name, self.config.text_type, "inv", "_".join([self.config.plm_tokenizer, str(self._text_length), ",".join([str(x) for x in self.config.text_col])]), str(self.config.world_size))
@@ -950,7 +958,7 @@ class BaseSparseModel(BaseModel):
             special_token_ids.update([x[1] for x in self.config.special_token_ids.values() if x[0] is not None])
 
         index = INVERTED_INDEX_MAP[self.config.index_type](
-            text_num=text_embeddings_tensor.shape[0],
+            text_num=text_embeddings.shape[0],
             token_num=self._posting_entry_num,
             device=self.config.device,
             rank=self.config.rank,
@@ -959,7 +967,7 @@ class BaseSparseModel(BaseModel):
         )
         index.fit(
             text_token_ids=text_token_ids,
-            text_embeddings=text_embeddings_tensor,
+            text_embeddings=text_embeddings,
             load_index=self.config.load_index,
             save_index=self.config.save_index,
             threads=self.config.get("index_thread", 16) // self.config.world_size,
@@ -1332,7 +1340,7 @@ class BaseDenseModel(BaseModel):
     def __init__(self, config):
         super().__init__(config)
         # TODO: other ANN libraries
-        self.index_dir = os.path.join(self.index_dir, "faiss")
+        self.index_dir = os.path.join(config.cache_root, "index", self.name, config.text_type, "faiss")
 
 
     def encode_text_step(self, x):
@@ -1471,28 +1479,30 @@ class BaseDenseModel(BaseModel):
         if not self.config.load_index:
             text_embeddings = self.encode_text(loader_text).embeddings
 
-        if self.config.index_type != "Flat" and not self.config.is_main_proc > 0:
-            index = None
-        else:
-            if self.config.device != "cpu":
-                # release temperary gpu cache so that faiss can use it
-                torch.cuda.empty_cache()
+        # if self.config.index_type != "Flat" and not self.config.is_main_proc > 0:
+        #     index = None
+        # else:
+        if self.config.device != "cpu":
+            # release temperary gpu cache so that faiss can use it
+            torch.cuda.empty_cache()
 
-            index = FaissIndex(
-                index_type=self.config.index_type,
-                d=self._output_dim,
-                metric=self.config.dense_metric,
-                start_text_idx=loader_text.sampler.start,
-                device=self.config.device,
-                save_dir=self.index_dir,
-            )
-            if self.config.load_index:
-                index.load()
+        index = FaissIndex(
+            index_type=self.config.index_type,
+            d=self._output_dim,
+            metric=self.config.dense_metric,
+            start_text_idx=loader_text.sampler.start,
+            device=self.config.device,
+            save_dir=self.index_dir,
+            thread_num=self.config.faiss_thread,
+            efConstruction=self.config.get("efConstruction"),
+        )
+        if self.config.load_index:
+            index.load()
 
-            index.fit(text_embeddings)
+        index.fit(text_embeddings)
 
-            if self.config.save_index:
-                index.save()
+        if self.config.save_index:
+            index.save()
 
         return BaseOutput(index=index)
 
@@ -1526,7 +1536,6 @@ class BaseDenseModel(BaseModel):
         query_embeddings = encode_output.embeddings
 
         if index is not None:
-            t1 = time.time()
             self.logger.info("searching...")
 
             if "Flat" in index.name:
@@ -1535,16 +1544,20 @@ class BaseDenseModel(BaseModel):
                 # load all verifier for ANN indexes like IVFPQ, since it only stores at rank==0
                 verifier = self.init_verifier(loaders, load_all_verifier=True)
 
+            if self.config.eval_efficiency:
+                t1 = time.time()
+
             retrieval_result, posting_list_length = index.search(
+                batch_size=self.config.eval_batch_size,
                 query_embeddings=query_embeddings,
                 hits=self.config.hits,
                 eval_posting_length=self.config.eval_posting_length and "IVF" in self.config.index_type,
                 # the following config are index-specific, may be missing
                 nprobe=self.config.get("nprobe"),
-                efSearch=self.config.get("hnswef"),
+                efSearch=self.config.get("efSearch"),
                 verifier=verifier
             )
-            t2 = time.time()
+            
             # manually delete the index
             del index
 
@@ -1554,6 +1567,10 @@ class BaseDenseModel(BaseModel):
                 #     posting_list_length = np.asarray(self._gather_objects(posting_list_length)).sum()
                 self.metrics["Posting_List_Length"] = int(np.round(posting_list_length))
                 self.logger.info(f"Average Posting Length is {self.metrics['Posting_List_Length']}!")
+            if self.config.eval_efficiency:
+                t2 = time.time()
+                self.metrics["Query_Latency"] = round((t2 - t1) / len(loader_query.sampler), 4)
+                self.logger.info(f"Average Query Latency is {self.metrics['Query_Latency']}!")
         else:
             retrieval_result = defaultdict(list)
 

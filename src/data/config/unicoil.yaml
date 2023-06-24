@@ -21,4 +21,4 @@ train:
 
 eval:
   eval_posting_length: true
-  eval_flops: true
+  eval_flops: false

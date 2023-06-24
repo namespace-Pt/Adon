@@ -1,4 +1,4 @@
-# Autoregressive Search Engine with Term-Set Generation (AutoTSG)
+# Hybrid Inverted Index Is a Robust Accelerator for Dense Retrieval
 
 This repository contains the implementation of HI2.
 

@@ -33,7 +33,7 @@ This repository contains the implementation of HI2.
    tar -xzvf hi2.msmarco.tar.gz -C src/data/cache/
    ```
 2. ```bash
-   torchrun --nproc_per_node=4 run.py BIVFPQ
+   torchrun --nproc_per_node=4 run.py HI2
    ```
    - `nproc_per_node` determines how many GPU to use
 3. With 4 A100s, the above command should finish within 1 minutes and yield results very similar to:
@@ -48,7 +48,7 @@ This repository contains the implementation of HI2.
    tar -xzvf hi2.nq.tar.gz -C src/data/cache/
    ```
 2. ```bash
-   torchrun --nproc_per_node=4 run.py BIVFPQ-NQ
+   torchrun --nproc_per_node=4 run.py HI2-NQ
    ```
    - `nproc_per_node` determines how many GPU to use
 3. With 4 A100s, the above command should finish within 1 minutes and yield results very similar to:

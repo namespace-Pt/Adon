@@ -66,9 +66,9 @@ This repository contains the implementation of HI2.
    ```
    - `nproc_per_node` determines how many processes to parallel (the more the faster). There is no need for GPU.
    - The searching process should finish within 2 minutes and yield results very similar to:
-      |MRR@10|Recall@100|Recall@1000|
-      |:-:|:-:|:-:|
-      |0.401|0.916|0.976|
+      |MRR@10|Recall@100|Recall@1000|#Documents to Evaluate|
+      |:-:|:-:|:-:|:-:|
+      |0.401|0.916|0.976|56652|
 
 #### HI$^2_{\text{unsup}}$
 1. (*Skip if you already have.*) Download the model checkpoint from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtg5ozi2bjeUn6IlGYyw?e=0NY5IH); Then untar it with 
@@ -84,7 +84,7 @@ This repository contains the implementation of HI2.
    - The results shold be similar to
       |MRR@10|Recall@100|Recall@1000|#Documents to Evaluate|
       |:-:|:-:|:-:|:-:|
-      |0.416|0.927|0.988|56652|
+      |0.416|0.927|0.988|8841823|
 3. Prepare BM25 token-level index:
    ```bash
    torchrun --nproc_per_node=32 run.py BM25 ++pretokenize ++granularity=token

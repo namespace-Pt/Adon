@@ -6,8 +6,8 @@ This repository contains the implementation of HI2.
 0. Clone the repository and create the environment
    ```bash
    export CUDA=11.6
-   conda create -n autotsg python=3.9.12
-   conda activate autotsg
+   conda create -n hi2 python=3.9.12
+   conda activate hi2
    conda install pytorch==1.10.1 cudatoolkit=$CUDA -c conda-forge -c pytorch
    conda install faiss-gpu==1.7.2 -c conda-forge
    pip install torch_scatter -f https://data.pyg.org/whl/torch-1.10.0+$CUDA.html

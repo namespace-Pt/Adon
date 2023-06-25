@@ -13,8 +13,8 @@ This repository contains the implementation of HI2.
    pip install torch_scatter -f https://data.pyg.org/whl/torch-1.10.0+$CUDA.html
    pip install transformers==4.21.3 hydra-core==1.2.0 notebook ipywidgets psutil
    ```
-1. Download the MSMARCO Passage Dataset from [HERE]();
-2. Download the Natual Questions Dataset from [HERE]();
+1. Download the MSMARCO Passage Dataset from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtg5oxt3WgMe5NhFeR9g?e=HxR0BE);
+2. Download the Natual Questions Dataset from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtg5oyNGedFAptLP-9Gw?e=zgWa2L);
 3. Untar the file at anywhere you like, e.g. `/data/HI2`;
 4. Go to `src/data/config/base/_default.yaml`, set 
    - `data_root: /data/HI2`. This tells the program where to find the data.
@@ -38,7 +38,7 @@ This repository contains the implementation of HI2.
 ## Reproducing from Our Checkpoint
 ### MSMARCO Passage
 #### HI$^2_{\text{sup}}$
-1. Download the model checkpoint and identifier from [HERE](); Then untar it with 
+1. Download the model checkpoint from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtg5ozi2bjeUn6IlGYyw?e=0NY5IH); Then untar it with 
    ```bash
    tar -xzvf hi2.msmarco.tar.gz -C src/data/cache/
    ```
@@ -49,12 +49,12 @@ This repository contains the implementation of HI2.
    - `nproc_per_node` determines how many GPU to use
    - `save_encode` creates cached embeddings in `src/data/cache/MSMARCO-passage/encode/RetroMAE`
    - The results shold be similar to
-      |MRR@10|Recall@100|Recall@1000|
-      |:-:|:-:|:-:|
-      |0.416|0.927|0.988|
+      |MRR@10|Recall@100|Recall@1000|#Documents to Evaluate|
+      |:-:|:-:|:-:|:-:|
+      |0.416|0.927|0.988|8841823|
 3. Prepare terms:
    ```bash
-   torchrun --nproc_per_node=4 run.py UniCOIL_d-RetroMAE mode=encode ++save_encode ++text_col=[1,2]
+   torchrun --nproc_per_node=4 run.py UniCOIL_d-RetroMAE mode=encode ++save_encode
    ```
 4. Prepare clusters:
    ```bash
@@ -71,7 +71,7 @@ This repository contains the implementation of HI2.
       |0.401|0.916|0.976|
 
 #### HI$^2_{\text{unsup}}$
-1. (*Skip if you already have.*) Download the model checkpoint and identifier from [HERE](); Then untar it with 
+1. (*Skip if you already have.*) Download the model checkpoint from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtg5ozi2bjeUn6IlGYyw?e=0NY5IH); Then untar it with 
    ```bash
    tar -xzvf hi2.msmarco.tar.gz -C src/data/cache/
    ```
@@ -94,7 +94,7 @@ This repository contains the implementation of HI2.
    - `granularity=token` tells the model to save token-level document vector
 4. Prepare terms:
    ```bash
-   torchrun --nproc_per_node=32 run.py BM25 mode=encode ++pretokenize ++granularity=token ++save_weight ++save_encode ++text_col=[1,2]
+   torchrun --nproc_per_node=32 run.py BM25 mode=encode ++pretokenize ++granularity=token ++save_weight ++save_encode
    ```
 5. Prepare clusters:
    ```bash
@@ -102,7 +102,7 @@ This repository contains the implementation of HI2.
    ```
 6. Run HI$^2$:
    ```bash
-   torchrun --nproc_per_node=4 run.py HI2 ++x_model=BM25 ++x_text_gate_k=15 ++y_model=IVF ++y_query_gate_k=25 ++verifier_src=RetroMAE ++y_load_encode
+   torchrun --nproc_per_node=4 run.py HI2 ++x_model=BM25 ++x_text_gate_k=15 ++y_model=IVF ++y_query_gate_k=25 ++verifier_src=RetroMAE ++y_load_encode ++x_load_ckpt=inv
    ```
    - `nproc_per_node` determines how many processes to parallel (the more the faster). There is no need for GPU.
    - `x_text_gate_k` sets how many terms to index for each document
@@ -126,9 +126,9 @@ This repository contains the implementation of HI2.
    - `nproc_per_node` determines how many GPU to use
    - `save_encode` creates cached embeddings in `src/data/cache/NQ-open/encode/AR2`
    - The results shold be similar to
-      |Recall@5|Recall@20|Recall@100|
-      |:-:|:-:|:-:|
-      |0.779|0.861|0.908|
+      |Recall@5|Recall@20|Recall@100|#Documents to Evaluate|
+      |:-:|:-:|:-:|:-:|
+      |0.779|0.861|0.908|21015324|
 3. Prepare terms:
    ```bash
    torchrun --nproc_per_node=4 run.py UniCOIL_d-AR2 base=NQ-open mode=encode ++save_encode
@@ -148,7 +148,7 @@ This repository contains the implementation of HI2.
       |0.779|0.861|0.907|136691|
 
 #### HI$^2_{\text{unsup}}$
-1. (*Skip if you already have.*) Download the model checkpoint and identifier from [HERE](); Then untar it with 
+1. (*Skip if you already have.*) Download the model checkpoint from [HERE](); Then untar it with 
    ```bash
    tar -xzvf hi2.nq.tar.gz -C src/data/cache/
    ```
@@ -179,7 +179,7 @@ This repository contains the implementation of HI2.
    ```
 6. Run HI$^2$:
    ```bash
-   torchrun --nproc_per_node=4 run.py HI2-NQ ++x_model=BM25 ++x_text_gate_k=20 ++y_model=IVF ++verifier_src=AR2 ++y_load_encode
+   torchrun --nproc_per_node=4 run.py HI2-NQ ++x_model=BM25 ++x_text_gate_k=20 ++y_model=IVF ++verifier_src=AR2 ++y_load_encode ++x_load_ckpt=inv
    ```
    - `nproc_per_node` determines how many processes to parallel (the more the faster). There is no need for GPU.
    - `x_text_gate_k` sets how many terms to index for each document

@@ -10,5 +10,5 @@ max_query_length: 64
 
 plm: bert
 
-text_col: [2]
+text_col: [1,2]
 text_col_sep: "sep"

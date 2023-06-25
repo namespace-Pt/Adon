@@ -159,9 +159,9 @@ This repository contains the implementation of HI2.
    - `nproc_per_node` determines how many GPU to use
    - `save_encode` creates cached embeddings in `src/data/cache/NQ-open/encode/AR2`
    - The results shold be similar to
-      |Recall@5|Recall@20|Recall@100|
-      |:-:|:-:|:-:|
-      |0.779|0.861|0.908|
+      |Recall@5|Recall@20|Recall@100|#Documents to Evaluate|
+      |:-:|:-:|:-:|:-:|
+      |0.779|0.861|0.908|21015324|
 3. Prepare BM25 token-level index:
    ```bash
    torchrun --nproc_per_node=32 run.py BM25 base=NQ-open ++pretokenize ++granularity=token

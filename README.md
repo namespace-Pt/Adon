@@ -115,7 +115,7 @@ This repository contains the implementation of HI2.
 
 ### Natural Questions
 #### HI$^2_{\text{sup}}$
-1. Download the model checkpoint from [HERE](); Then untar it with 
+1. Download the model checkpoint from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtg5o0Gl2Mb71E6Ykn-Q?e=V0Fwjp); Then untar it with 
    ```bash
    tar -xzvf hi2.nq.tar.gz -C src/data/cache/
    ```
@@ -148,7 +148,7 @@ This repository contains the implementation of HI2.
       |0.779|0.861|0.907|136691|
 
 #### HI$^2_{\text{unsup}}$
-1. (*Skip if you already have.*) Download the model checkpoint from [HERE](); Then untar it with 
+1. (*Skip if you already have.*) Download the model checkpoint from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtg5o0Gl2Mb71E6Ykn-Q?e=V0Fwjp); Then untar it with 
    ```bash
    tar -xzvf hi2.nq.tar.gz -C src/data/cache/
    ```

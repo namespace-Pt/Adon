@@ -143,7 +143,7 @@ class AutoTSG(DSI):
                 if self.config.debug:
                     if i > 2:
                         break
-            
+                        
             if self.config.is_main_proc:
                 same_count = 0
                 text_codes = text_dataset.text_codes

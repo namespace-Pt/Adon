@@ -354,7 +354,10 @@ class BaseModel(nn.Module):
 
         if self.config.is_main_proc:
             # the value of a retrieval_result key is a list of tuple (id, score) or just an id
-            with_score = isinstance(next(iter(retrieval_result.values()))[0], tuple)
+            try:
+                with_score = isinstance(next(iter(retrieval_result.values()))[0], tuple)
+            except:
+                with_score = False
 
             if self.config.save_score:
                 if not with_score:
@@ -1829,6 +1832,7 @@ class BaseGenerativeModel(BaseModel):
         beam_decoder = BeamDecoder()
 
         tokenizer = AutoTokenizer.from_pretrained(self.config.plm_dir)
+        # new_query_file = open(f"queries.autotsg.tsv", "w")
 
         for i, x in enumerate(tqdm(loader_query, leave=False, ncols=100)):
             # if not (x["query_idx"].unsqueeze(-1) == torch.tensor([1466])).any():
@@ -1862,6 +1866,17 @@ class BaseGenerativeModel(BaseModel):
             beams = beam_decoder.beams
             eos_hidden_states = beam_decoder.eos_hidden_states
 
+            # # write to query file
+            # first_beam = [beam[0] for beam in beams]
+            # query_token_id = x["query"]["input_ids"]
+            # query_idx = x["query_idx"].tolist()
+            # for q, b, idx in zip(query_token_id, first_beam, query_idx):
+            #     b = [c for c in b if c != index.sep_token_id]
+            #     q = tokenizer.decode(q, skip_special_tokens=True)
+            #     b = tokenizer.decode(b, skip_special_tokens=True)
+            #     line = str(idx) + "\t" + q + " " + b + "\n"
+            #     new_query_file.write(line)
+
             # ranking by score
             if self.config.rank_type == "eos":
                 eos_hidden_states = torch.stack(sum(eos_hidden_states, []), dim=0)
@@ -1887,6 +1902,7 @@ class BaseGenerativeModel(BaseModel):
 
             if self.config.get("debug") and i > 1:
                 break
-        
+
+        # new_query_file.close()
         return retrieval_result
 

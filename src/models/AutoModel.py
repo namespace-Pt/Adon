@@ -9,7 +9,7 @@ from .COIL import COIL
 from .ColBERT import ColBERT
 from .DSI import DSI, GENRE, DSIQG
 from .DeepImpact import DeepImpact
-from .DPR import DPR
+from .DPR import DPR, Contriever, GTR
 from .IVF import IVF, TopIVF, TokIVF
 from .SPARTA import SPARTA
 from .SPLADE import SPLADEv2
@@ -27,12 +27,14 @@ MODEL_MAP = {
     "coil": COIL,
     "colbert": ColBERT,
     "crossenc": CrossEncoder,
+    "contriever": Contriever,
     "deepimpact": DeepImpact,
     "distillvq": DistillVQ,
     "dpr": DPR,
     "dsi": DSI,
     "dsiqg": DSIQG,
     "genre": GENRE,
+    "gtr": GTR,
     "ivf": IVF,
     "rankt5": RankT5,
     "sparta": SPARTA,

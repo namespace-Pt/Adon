@@ -93,3 +93,49 @@ class DPR(BaseDenseModel):
         else:
             self.logger.info(f"saving plm model and tokenizer at {deploy_dir}...")
             self.plm.save_pretrained(deploy_dir)
+
+
+class Contriever(DPR):
+    def encode_text_step(self, x):
+        text = self._move_to_device(x["text"])
+        token_embeddings = self.textEncoder(**text)[0]
+        mask = text["attention_mask"]
+        token_embeddings = token_embeddings.masked_fill(~mask[..., None].bool(), 0.)
+        embedding = token_embeddings.sum(dim=1) / mask.sum(dim=1)[..., None]
+        if self.config.dense_metric == "cos":
+            embedding = F.normalize(embedding, dim=-1)
+        return embedding.cpu().numpy()
+
+    def encode_query_step(self, x):
+        query = self._move_to_device(x["query"])
+        token_embeddings = self.textEncoder(**query)[0]
+        mask = query["attention_mask"]
+        token_embeddings = token_embeddings.masked_fill(~mask[..., None].bool(), 0.)
+        embedding = token_embeddings.sum(dim=1) / mask.sum(dim=1)[..., None]
+        if self.config.dense_metric == "cos":
+            embedding = F.normalize(embedding, dim=-1)
+        return embedding.cpu().numpy()
+
+
+class GTR(BaseDenseModel):
+    def __init__(self, config):
+        super().__init__(config)
+        from sentence_transformers import SentenceTransformer        
+
+        self.encoder = SentenceTransformer('sentence-transformers/gtr-t5-base')
+        self.tokenizer = AutoTokenizer.from_pretrained("/share/peitian/Data/AutoTSG/PLM/gtr")
+        self._output_dim = 768
+
+    def encode_text_step(self, x):
+        text = self.tokenizer.batch_decode(x["text"]["input_ids"], skip_special_tokens=True)
+        embedding = self.encoder.encode(text, batch_size=self.config.eval_batch_size, convert_to_tensor=True, device=self.config.device)
+        if self.config.dense_metric == "cos":
+            embedding = F.normalize(embedding, dim=-1)
+        return embedding.cpu().numpy()
+
+    def encode_query_step(self, x):
+        query = self.tokenizer.batch_decode(x["query"]["input_ids"], skip_special_tokens=True)
+        embedding = self.encoder.encode(query, batch_size=self.config.eval_batch_size, convert_to_tensor=True, device=self.config.device)
+        if self.config.dense_metric == "cos":
+            embedding = F.normalize(embedding, dim=-1)
+        return embedding.cpu().numpy()

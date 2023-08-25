@@ -30,6 +30,14 @@ PLM_MAP = {
         "tokenizer": "bert",
         "load_name": "nghuyong/ernie-2.0-en"
     },
+    "contriever": {
+        "tokenizer": "contriever",
+        "load_name": "null"
+    },
+    "gtr": {
+        "tokenizer": "gtr",
+        "load_name": "null"
+    },
     "bert-chinese": {
         "tokenizer": "bert-chinese",
         "load_name": "bert-base-chinese"

@@ -155,5 +155,3 @@ There are three procedures to train AutoTSG from scratch. One can conveniently s
    |MRR@10|MRR@100|Recall@1|Recall@10|Recall@100|
    |:-:|:-:|:-:|:-:|:-:|
    |0.757|0.760|0.690|0.875|0.932|
-
-

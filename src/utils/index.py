@@ -1189,7 +1189,7 @@ class TrieIndex(BaseIndex):
     """
     TrieIndex Index.
     """
-    def __init__(self, rank:int=0, save_dir:str=".", save_name:Optional[str]=None, **kwargs):
+    def __init__(self, rank:int=0, sep_token_id=None, save_dir:str=".", save_name:Optional[str]=None, **kwargs):
         """
         Args:
             save_dir: the directory to save the trie index
@@ -1203,6 +1203,7 @@ class TrieIndex(BaseIndex):
         else:
             self.save_path = os.path.join(save_dir, save_name)
         self._root = Node()
+        self.sep_token_id = sep_token_id
 
     def _find(self, key):
         """
@@ -2071,7 +2072,7 @@ class BeamDecoder():
                         input_id = input_ids[batch_beam_idx].tolist() + [beam_token]
                         text_indices = constrain_index.values(input_id)
                         
-                    if (beam_token == self.eos_token_id or self.cur_new_tokens == max_new_tokens - 1) or (self.do_early_stop and self.cur_len >= self.early_stop_start_len and len(text_indices) == 1):
+                    if (beam_token == self.eos_token_id or self.cur_new_tokens == max_new_tokens - 1) or (self.do_early_stop and self.cur_len >= self.early_stop_start_len and len(text_indices) <= 1):
                         # <eos> is only meaningful when being decoded within the top num_beams
                         if beam_rank < self.num_beams:
                             if self.rank_type == "eos":
@@ -2083,11 +2084,17 @@ class BeamDecoder():
                                 eos_hidden_states = None
 
                             input_id = input_ids[batch_beam_idx].tolist() + [beam_token]
+                            text_idx = constrain_index.values(input_id)
+                            if len(text_idx):
+                                text_idx = text_idx[0]
+                            else:
+                                # deal with null index
+                                text_idx = []
                             self._add_beam(
                                 global_batch_idx=global_batch_idx, 
                                 hypothesis=input_id,
                                 score=beam_score,
-                                text_idx=constrain_index.values(input_id)[0],
+                                text_idx=text_idx,
                                 eos_hidden_state=eos_hidden_states
                             )
 
@@ -2366,6 +2373,8 @@ class BeamDecoder():
                     for beam_id, sent in enumerate(beam_sent):
                         mask[batch_id * self.prev_num_beams + beam_id, constrain_index.get_valid_tokens(sent.tolist())] = 0
                 scores = scores + mask
+                # no constraint
+                # pass
             elif self.constrain_index_type == "wordset":
                 # NOTE: move to cpu in advance significantly accelerates
                 beam_scores_list = beam_scores.tolist()

@@ -26,6 +26,7 @@ def main(config:Config):
     query_per_doc = config.query_per_doc
 
     doct5_path = os.path.join(config.data_root, config.dataset, "queries.doct5.tsv")
+    doct5_qrel_path = os.path.join(config.data_root, config.dataset, "qrels.doct5.tsv")
     cache_dir = os.path.join(config.cache_root, "dataset", "query", "doct5")
     mmp_path = os.path.join(cache_dir, config.plm_tokenizer, "token_ids.mmp")
     makedirs(mmp_path)
@@ -78,13 +79,6 @@ def main(config:Config):
         query_token_ids_mmp[loader_text.sampler.start: loader_text.sampler.end] = query_token_ids
         synchronize()
 
-        if config.on_main_proc:
-            # decode to strings and write to the query file
-            with open(doct5_path, "w") as f:
-                for i, token_ids in enumerate(tqdm(query_token_ids_mmp.reshape(-1, max_length), ncols=100, desc="Decoding")):
-                    seq = tokenizer.decode(token_ids[token_ids != -1], skip_special_tokens=True)    # N
-                    f.write("\t".join([str(i), seq]) + "\n")
-
     if config.is_main_proc:
         # load all saved token ids
         query_token_ids = np.memmap(
@@ -93,25 +87,15 @@ def main(config:Config):
             mode="r+"
         ).reshape(len(loader_text.dataset) * query_per_doc, max_length)
 
-        # generate qrels and positives to be used in QueryDataset
-        qid2index = {str(i): i for i in range(query_token_ids.shape[0])}
-        qrels = []
-        positives = {}
-        for i in range(len(loader_text.dataset)):
-            for j in range(query_per_doc):
-                qidx = j + i * query_per_doc
-                qrels.append((qidx, i))
-                positives[qidx] = [i]
-        save_pickle(qid2index, os.path.join(cache_dir, "id2index.pkl"))
-        save_pickle(qrels, os.path.join(cache_dir, "qrels.pkl"))
-        save_pickle(positives, os.path.join(cache_dir, "positives.pkl"))
-        
-        # when we want to tokenize the generated queries with another plm
-        config._set_plm(config.dest_plm, already_on_main_proc=True)
-        if config.plm_tokenizer != "t5":
-            from scripts.preprocess import tokenize_to_memmap
-            tokenizer = AutoTokenizer.from_pretrained(config.plm_dir)
-            tokenize_to_memmap(doct5_path, cache_dir, len(qid2index), max_length, tokenizer, config.plm_tokenizer, config.tokenize_thread, is_query=True)
+        # decode to strings and write to the query file
+        idx = 0
+        with open(doct5_path, "w") as f, open(doct5_qrel_path, "w") as g:
+            for i, queries in enumerate(tqdm(query_token_ids.reshape(len(loader_text.dataset), query_per_doc, max_length), ncols=100, desc="Decoding")):
+                for j, query in enumerate(queries):
+                    seq = tokenizer.decode(query[query != -1], skip_special_tokens=True)    # N
+                    f.write("\t".join([str(idx), seq]) + "\n")
+                    g.write("\t".join([str(idx), "0", str(i), "1"]) + "\n")
+                    idx += 1
 
 
 if __name__ == "__main__":

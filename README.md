@@ -10,7 +10,7 @@ This repository contains the implementation of HI2.
    conda activate hi2
    conda install pytorch==1.10.1 cudatoolkit=$CUDA -c conda-forge -c pytorch
    conda install faiss-gpu==1.7.2 -c conda-forge
-   pip install torch_scatter -f https://data.pyg.org/whl/torch-1.10.0+$CUDA.html
+   pip install torch_scatter==2.0.9 -f https://data.pyg.org/whl/torch-1.10.0+$CUDA.html
    pip install transformers==4.21.3 hydra-core==1.2.0 notebook ipywidgets psutil
    ```
 1. Download the MSMARCO Passage Dataset from [HERE](https://1drv.ms/u/s!Aipk4vd2SBrtg5oxt3WgMe5NhFeR9g?e=HxR0BE);
@@ -60,9 +60,13 @@ This repository contains the implementation of HI2.
    ```bash
    torchrun --nproc_per_node=4 run.py TopIVF_d-RetroMAE mode=encode ++save_encode
    ```
-5. Run HI$^2$:
+5. Prepare PQ:
    ```bash
-   torchrun --nproc_per_node=4 run.py HI2 ++y_load_encode
+   python run.py DistillVQ_d-RetroMAE mode=encode ++do_text=false ++save_encode
+   ```
+6. Run HI$^2$:
+   ```bash
+   torchrun --nproc_per_node=4 run.py HI2
    ```
    - `nproc_per_node` determines how many processes to parallel (the more the faster). There is no need for GPU.
    - The searching process should finish within 2 minutes and yield results very similar to:

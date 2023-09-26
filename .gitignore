@@ -1,0 +1,4 @@
+src/data/cache/*
+*.pyc
+performance.log
+tmp.sh

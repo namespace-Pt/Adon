@@ -525,7 +525,7 @@ def isnumber(x):
         return False
 
 
-def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, init_order:str, post_order:str, stop_words:set, separator:str=" ", stem=False, filter_num=False, filter_unit=False, weight_path=None):
+def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_idx:int, end_idx:int, tokenizer:Any, max_length:int, init_order:str, post_order:str, stop_words:set, separator:str=" ", stem=False, filter_num=False, filter_unit=False, ngram=1, weight_path=None):
     """
     Generate code based on json files produced by :func:`models.BaseModel.BaseModel.anserini_index`.
     First reorder the words by ``order``, and tokenize the word sequence by ``tokenizer``.
@@ -595,12 +595,26 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                         filtered_word_score_pairs[word] = score
                 word_score_pairs = filtered_word_score_pairs
             
+            if ngram > 1:
+                ngram_score_pairs = {}
+                words = []
+                scores = []
+                for word, score in word_score_pairs.items():
+                    words.append(word)
+                    scores.append(score)
+                
+                for i in range(0, len(words) - ngram + 1, ngram):
+                    ngram_content = " ".join([x.strip() for x in words[i: i + ngram] if len(x.strip()) > 0])
+                    ngram_score_pairs[ngram_content] = sum(scores[i: i + ngram])
+
+                word_score_pairs = ngram_score_pairs
+
             if stem:
                 filtered_word_score_pairs = {}
                 for word, score in word_score_pairs.items():
                     # some unicode character produces empty analyzer results
                     try:
-                        stemmed_word = analyzer.analyze(word)[0]
+                        stemmed_word = " ".join(analyzer.analyze(word))
                     except:
                         continue
                     

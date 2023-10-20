@@ -123,7 +123,7 @@ class GTR(BaseDenseModel):
         from sentence_transformers import SentenceTransformer        
 
         self.encoder = SentenceTransformer('sentence-transformers/gtr-t5-base')
-        self.tokenizer = AutoTokenizer.from_pretrained("/share/peitian/Data/AutoTSG/PLM/gtr")
+        self.tokenizer = self.encoder.tokenizer
         self._output_dim = 768
 
     def encode_text_step(self, x):

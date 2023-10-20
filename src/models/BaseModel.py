@@ -1319,6 +1319,7 @@ class BaseSparseModel(BaseModel):
                     self.config.get("stem_code"),
                     self.config.get("filter_num"),
                     self.config.get("filter_unit"),
+                    self.config.get("ngram", 1),
                     weight_path
                 ))
 

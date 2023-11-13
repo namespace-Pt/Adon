@@ -49,15 +49,17 @@ def main(config:Config):
 
                 sequences = model.generate(
                     **text,
-                    max_length=max_length,
                     do_sample=True,
+                    max_length=max_length,
+                    temperature=3.0,
+                    top_k=10,
                     num_return_sequences=query_per_doc
                 ).view(B, query_per_doc, -1).cpu().numpy()   # B, N, L
 
                 end_idx += B
                 query_token_ids[start_idx: end_idx, :, :sequences.shape[-1]] = sequences
                 start_idx = end_idx
-        
+
         # mask eos tokens
         query_token_ids[query_token_ids == config.special_token_ids["eos"][1]] = -1
 

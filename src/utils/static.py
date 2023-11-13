@@ -102,4 +102,8 @@ PLM_MAP = {
         "tokenizer": "bart",
         "load_name": "tuner007/pegasus_paraphrase"
     },
+    "doct5-nq": {
+        "tokenizer": "t5",
+        "load_name": "namespace-Pt/doct5-nq320k"
+    }
 }

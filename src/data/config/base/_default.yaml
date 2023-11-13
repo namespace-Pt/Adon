@@ -1,6 +1,6 @@
 # the root directory of the raw data
-data_root: /share/peitian/Data/AutoTSG
-plm_root: /share/peitian/Data/AutoTSG/PLMs
+data_root: /share/peitian/Data/Datasets/Adon
+plm_root: /share/peitian/Data/Datasets/Adon/PLMs
 seed: 42
 
 # the device to run the model or script

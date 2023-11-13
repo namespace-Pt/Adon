@@ -582,7 +582,7 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
 
             word_score_pairs = doc["vector"]
 
-            if len(stop_words):
+            if len(stop_words) and ngram == 1:
                 filtered_word_score_pairs = {}
                 for word, score in word_score_pairs.items():
                     if word in stop_words:
@@ -614,17 +614,17 @@ def _get_token_code(input_path:str, output_path:str, all_line_count:int, start_i
                 for word, score in word_score_pairs.items():
                     # some unicode character produces empty analyzer results
                     try:
-                        stemmed_word = " ".join(analyzer.analyze(word))
+                        stems = frozenset(analyzer.analyze(word))
                     except:
                         continue
                     
-                    if stemmed_word in filtered_word_score_pairs:
+                    if stems in filtered_word_score_pairs:
                         # pick the maximum score
-                        prev_word, prev_score = filtered_word_score_pairs[stemmed_word]
+                        prev_word, prev_score = filtered_word_score_pairs[stems]
                         if score > prev_score:
-                            filtered_word_score_pairs[stemmed_word] = (word, score)
+                            filtered_word_score_pairs[stems] = (word, score)
                     else:
-                        filtered_word_score_pairs[stemmed_word] = (word, score)
+                        filtered_word_score_pairs[stems] = (word, score)
                 word_score_pairs = {v[0]: v[1] for v in filtered_word_score_pairs.values()}
 
             if init_order == "weight":
